@@ -1,0 +1,54 @@
+name: SecureAuth
+version: '${project.version}'
+main: dev.tienday.secureauth.SecureAuthPlugin
+api-version: '1.21'
+description: Secure login system with 2FA via Discord
+author: TienDay
+load: POSTWORLD
+
+commands:
+  login:
+    description: Login to the server
+    usage: /login <password> [2fa_code]
+    aliases: [l]
+  register:
+    description: Register an account
+    usage: /register <password> <confirm_password>
+    aliases: [reg]
+  link:
+    description: Link your Discord account (use code from bot DM)
+    usage: /link <code>
+  authadmin:
+    description: Admin commands for SecureAuth
+    usage: /authadmin <reset|resetfa|info> <player>
+    permission: secureauth.admin
+    permission-message: "&cNo permission."
+
+permissions:
+  secureauth.admin:
+    description: Access to /authadmin commands
+    default: false
+
+  secureauth.bypass:
+    description: Bypass login requirement — NEVER grant to OP automatically
+    default: false
+
+  secureauth.manage-op:
+    description: Allow using /op and /deop in-game (still logged)
+    default: false
+
+  secureauth.cmd.server-control:
+    description: Allow /reload /timings (NOT /stop /restart — console only)
+    default: false
+
+  secureauth.cmd.plugin-manage:
+    description: Allow /plugins /pl /version /plugman
+    default: false
+
+  secureauth.cmd.world-manage:
+    description: Allow /save-all /save-off /whitelist /unload
+    default: false
+
+  secureauth.cmd.console-exec:
+    description: Allow /execute /sudo and console-level commands
+    default: false
