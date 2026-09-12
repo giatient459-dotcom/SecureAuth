@@ -1,0 +1,63 @@
+name: Build
+
+on:
+  push:
+    branches-ignore:
+      - '**'   # không trigger khi push branch thường
+    tags:
+      - 'v*'   # chỉ trigger khi push tag kiểu v1.0.0
+  workflow_dispatch:  # cho phép chạy thủ công từ GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # cần để tạo Release
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn -B package --no-transfer-progress
+
+      - name: Get version from pom.xml
+        id: get_version
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "jar=target/SecureAuth-${VERSION}.jar" >> $GITHUB_OUTPUT
+
+      - name: Upload JAR as artifact (mọi lần build)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureAuth-${{ steps.get_version.outputs.version }}
+          path: ${{ steps.get_version.outputs.jar }}
+          retention-days: 30
+
+      - name: Create GitHub Release (chỉ khi push tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.get_version.outputs.jar }}
+          name: "SecureAuth ${{ steps.get_version.outputs.version }}"
+          body: |
+            ## SecureAuth ${{ steps.get_version.outputs.version }}
+
+            ### Cài đặt
+            1. Tải file `.jar` bên dưới
+            2. Bỏ vào thư mục `plugins/`
+            3. Cấu hình `config.yml`
+            4. Khởi động server
+
+            ### Thay đổi
+            _Cập nhật changelog tại đây_
+          draft: false
+          prerelease: false
