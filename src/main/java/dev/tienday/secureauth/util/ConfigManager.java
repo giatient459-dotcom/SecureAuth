@@ -47,22 +47,9 @@ public class ConfigManager {
                     "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure.");
         }
 
-        String dbPass = getDbPassword();
-        if (dbPass == null || dbPass.isBlank() || "CHANGE_ME".equals(dbPass)) {
-            plugin.getLogger().log(Level.WARNING,
-                    "database.password has not been changed from default.");
-        }
     }
 
-    // ---- Database ----
-
-    public String getDbHost()     { return plugin.getConfig().getString("database.host", "localhost"); }
-    public int    getDbPort()     { return plugin.getConfig().getInt("database.port", 3306); }
-    public String getDbName()     { return plugin.getConfig().getString("database.name", "secureauth"); }
-    public String getDbUsername() { return plugin.getConfig().getString("database.username", "root"); }
-    public String getDbPassword() { return plugin.getConfig().getString("database.password", ""); }
-    public int    getDbPoolSize() { return Math.max(2, plugin.getConfig().getInt("database.pool-size", 10)); }
-    public boolean isDbUseSsl()   { return plugin.getConfig().getBoolean("database.use-ssl", false); }
+    // ---- Database: SQLite — no config needed, file auto-created ----
     public boolean isDbVerifyServerCertificate() {
         return plugin.getConfig().getBoolean("database.verify-server-certificate", false);
     }
