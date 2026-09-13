@@ -6,6 +6,7 @@ import dev.tienday.secureauth.command.LoginCommand;
 import dev.tienday.secureauth.command.RegisterCommand;
 import dev.tienday.secureauth.database.DatabaseManager;
 import dev.tienday.secureauth.listener.AuthListener;
+import dev.tienday.secureauth.listener.CommandBlocker;
 import dev.tienday.secureauth.listener.DangerousCommandListener;
 import dev.tienday.secureauth.listener.OPGuardListener;
 import dev.tienday.secureauth.security.RateLimiter;
@@ -65,6 +66,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new AuthListener(this), this);
         getServer().getPluginManager().registerEvents(new OPGuardListener(this), this);
         getServer().getPluginManager().registerEvents(new DangerousCommandListener(this), this);
+        getServer().getPluginManager().registerEvents(new CommandBlocker(this), this);
 
         sessionManager.startTimeoutTask();
         rateLimiter.startCleanupTask();
