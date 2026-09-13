@@ -1,15 +1,7 @@
 # SecureAuth Configuration
 # Author: TienDay
 
-database:
-  host: "localhost"
-  port: 3306
-  name: "secureauth"
-  username: "root"
-  password: "CHANGE_ME"
-  pool-size: 10
-  use-ssl: false
-  verify-server-certificate: false
+# SQLite — không cần cài gì thêm, file tự tạo tại plugins/SecureAuth/secureauth.db
 
 security:
   session-timeout: 300
@@ -55,6 +47,7 @@ messages:
   kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
   register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
+
 op-guard:
   block-op-commands: true
   block-bypass-grants: true
@@ -65,3 +58,35 @@ dangerous-commands:
   console-only:
     - "stop"
     - "restart"
+
+command-blocker:
+  enabled: true
+  # Tin nhắn hiện ra khi bị chặn (giả vờ như command không tồn tại)
+  message: "&cUnknown command. Type /help for help."
+  # Danh sách command bị chặn với non-OP (không cần ghi dấu /)
+  blocked:
+    - "gamemode"
+    - "gm"
+    - "tp"
+    - "tphere"
+    - "teleport"
+    - "give"
+    - "enchant"
+    - "effect"
+    - "kill"
+    - "summon"
+    - "setblock"
+    - "fill"
+    - "time"
+    - "weather"
+    - "difficulty"
+    - "spawnpoint"
+    - "xp"
+    - "experience"
+    - "attribute"
+    - "ban"
+    - "ban-ip"
+    - "kick"
+    - "pardon"
+    - "pardon-ip"
+    - "whitelist"
