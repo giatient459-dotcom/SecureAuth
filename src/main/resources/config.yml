@@ -1,0 +1,67 @@
+# SecureAuth Configuration
+# Author: TienDay
+
+database:
+  host: "localhost"
+  port: 3306
+  name: "secureauth"
+  username: "root"
+  password: "CHANGE_ME"
+  pool-size: 10
+  use-ssl: false
+  verify-server-certificate: false
+
+security:
+  session-timeout: 300
+  max-login-attempts: 5
+  lockout-duration: 300
+  two-fa-code-expiry: 120
+  two-fa-code-length: 6
+  two-fa-min-resend-interval: 15
+  register-attempts-per-10min: 5
+  link-attempts-per-10min: 10
+  argon2-iterations: 3
+  argon2-memory-kb: 65536
+  argon2-parallelism: 4
+
+discord-bot:
+  api-url: "http://127.0.0.1:8765"
+  api-secret: "CHANGE_ME_STRONG_SECRET"
+  api-timeout-ms: 5000
+
+messages:
+  prefix: "&8[&bSecureAuth&8] "
+  not-logged-in: "&cBạn chưa đăng nhập! Dùng /login <password> hoặc /register <pass> <pass>"
+  login-success: "&aĐăng nhập thành công!"
+  register-success: "&aĐăng ký thành công! Hãy dùng /login <password> để đăng nhập."
+  wrong-password: "&cSai mật khẩu!"
+  already-logged-in: "&eBạn đã đăng nhập rồi."
+  not-registered: "&cBạn chưa có tài khoản. Dùng /register <pass> <confirm>."
+  already-registered: "&cTên này đã được đăng ký."
+  password-mismatch: "&cHai mật khẩu không khớp."
+  password-too-short: "&cMật khẩu phải có ít nhất 8 ký tự."
+  too-many-attempts: "&cQuá nhiều lần thử. Thử lại sau {seconds} giây."
+  session-expired: "&cPhiên đăng nhập hết hạn. Vui lòng đăng nhập lại."
+  two-fa-required: "&eMã 2FA đã được gửi qua Discord DM. Dùng /login <mã>."
+  two-fa-invalid: "&cMã 2FA không hợp lệ hoặc đã hết hạn."
+  two-fa-expired: "&cMã 2FA đã hết hạn. Đăng nhập lại để nhận mã mới."
+  two-fa-cooldown: "&eVui lòng đợi {seconds} giây trước khi yêu cầu mã mới."
+  discord-not-linked: "&eBạn chưa liên kết Discord. Nhắn bot trên Discord để lấy code, rồi dùng /link <code>."
+  discord-link-success: "&aLinked Discord thành công!"
+  discord-link-invalid: "&cCode không hợp lệ hoặc đã hết hạn. Nhắn lại bot để lấy code mới."
+  discord-dm-failed: "&cKhông gửi được DM Discord (bạn có thể đã chặn bot). Sẽ bị kick."
+  kick-not-logged-in: "Bạn chưa đăng nhập trong thời gian quy định."
+  kick-session-expired: "Phiên đăng nhập hết hạn."
+  kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
+  register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
+  link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
+op-guard:
+  block-op-commands: true
+  block-bypass-grants: true
+
+dangerous-commands:
+  enabled: true
+  extra-protected: []
+  console-only:
+    - "stop"
+    - "restart"
