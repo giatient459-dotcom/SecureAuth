@@ -19,15 +19,25 @@ public class TwoFactorManager {
 
     private record PendingCode(String code, long expiresAt) { }
 
-    public enum VerifyResult { VALID, INVALID, EXPIRED, NOT_FOUND }
+    /**
+     * FIX: Thêm TOO_MANY_ATTEMPTS.
+     * Khi player nhập sai code 2FA quá MAX_2FA_ATTEMPTS lần, code bị huỷ
+     * và trả về giá trị này để LoginCommand kick player.
+     */
+    public enum VerifyResult { VALID, INVALID, EXPIRED, NOT_FOUND, TOO_MANY_ATTEMPTS }
     public enum SendResult   { SENT, COOLDOWN, FAILED }
+
+    /** FIX: Số lần nhập sai tối đa trước khi huỷ code. */
+    private static final int MAX_2FA_ATTEMPTS = 3;
 
     private static final String DIGITS = "0123456789";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SecureAuthPlugin plugin;
-    private final Map<String, PendingCode> pendingCodes = new ConcurrentHashMap<>();
-    private final Map<String, Long> lastSentAt = new ConcurrentHashMap<>();
+    private final Map<String, PendingCode> pendingCodes  = new ConcurrentHashMap<>();
+    private final Map<String, Long>        lastSentAt    = new ConcurrentHashMap<>();
+    /** FIX: Đếm số lần nhập sai của từng player trong phiên 2FA hiện tại. */
+    private final Map<String, Integer>     verifyAttempts = new ConcurrentHashMap<>();
 
     public TwoFactorManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
@@ -56,6 +66,8 @@ public class TwoFactorManager {
 
         pendingCodes.put(uuid, pending);
         lastSentAt.put(uuid, now);
+        // FIX: reset bộ đếm sai mỗi khi gửi code mới.
+        verifyAttempts.remove(uuid);
 
         boolean sent = callBotSendDm(discordId, code, expirySec);
         if (!sent) {
@@ -75,6 +87,13 @@ public class TwoFactorManager {
         return Math.max(0, cooldownSec - elapsed);
     }
 
+    /**
+     * FIX: Giới hạn số lần nhập sai.
+     * - Nhập đúng  → reset counter, xoá code, trả VALID.
+     * - Nhập sai lần 1..MAX-1 → tăng counter, trả INVALID (code vẫn còn).
+     * - Nhập sai lần thứ MAX  → xoá code + counter, trả TOO_MANY_ATTEMPTS.
+     * - Hết hạn → xoá code + counter, trả EXPIRED.
+     */
     public VerifyResult verifyCode(String uuid, String input) {
         if (uuid == null || input == null) return VerifyResult.NOT_FOUND;
         PendingCode pending = pendingCodes.get(uuid);
@@ -82,6 +101,7 @@ public class TwoFactorManager {
 
         if (System.currentTimeMillis() > pending.expiresAt()) {
             pendingCodes.remove(uuid, pending);
+            verifyAttempts.remove(uuid);
             return VerifyResult.EXPIRED;
         }
 
@@ -89,7 +109,15 @@ public class TwoFactorManager {
         boolean match = constantTimeStringEquals(pending.code(), trimmed);
         if (match) {
             pendingCodes.remove(uuid, pending);
+            verifyAttempts.remove(uuid);
             return VerifyResult.VALID;
+        }
+
+        int attempts = verifyAttempts.merge(uuid, 1, Integer::sum);
+        if (attempts >= MAX_2FA_ATTEMPTS) {
+            pendingCodes.remove(uuid, pending);
+            verifyAttempts.remove(uuid);
+            return VerifyResult.TOO_MANY_ATTEMPTS;
         }
         return VerifyResult.INVALID;
     }
@@ -99,9 +127,16 @@ public class TwoFactorManager {
         if (p == null) return false;
         if (System.currentTimeMillis() > p.expiresAt()) {
             pendingCodes.remove(uuid, p);
+            verifyAttempts.remove(uuid);
             return false;
         }
         return true;
+    }
+
+    /** Số lần nhập sai còn lại của player (dùng để hiển thị cho player). */
+    public int remainingAttempts(String uuid) {
+        if (uuid == null) return MAX_2FA_ATTEMPTS;
+        return Math.max(0, MAX_2FA_ATTEMPTS - verifyAttempts.getOrDefault(uuid, 0));
     }
 
     /** String-keyed variant. */
@@ -109,6 +144,8 @@ public class TwoFactorManager {
         if (uuid != null) {
             pendingCodes.remove(uuid);
             lastSentAt.remove(uuid);
+            // FIX: dọn counter khi huỷ phiên.
+            verifyAttempts.remove(uuid);
         }
     }
 
