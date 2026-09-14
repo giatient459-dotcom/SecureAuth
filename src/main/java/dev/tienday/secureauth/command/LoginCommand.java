@@ -7,6 +7,7 @@ import dev.tienday.secureauth.security.PasswordUtil;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.SessionManager;
+import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -54,7 +55,9 @@ public class LoginCommand implements CommandExecutor {
                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
                 return true;
             }
-            String code = args[args.length == 1 ? 0 : 1];
+            // FIX: luôn lấy args[0]. Trước đây dùng args[length-1] sai vị trí
+            // khi player gõ thừa tham số → code hợp lệ vẫn bị coi là sai.
+            String code = args[0];
 
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
@@ -72,17 +75,35 @@ public class LoginCommand implements CommandExecutor {
                     asyncLog(player, "2FA_CODE_EXPIRED", "Player's 2FA code expired");
                 }
                 case INVALID -> {
+                    // FIX: chỉ log nội bộ, không phụ thuộc rateLimiter password.
+                    // RateLimiter password vẫn được ghi nhận để phòng bruteforce tổng.
                     boolean lockedOut = rateLimiter.recordFailure(uuid);
-                    player.sendMessage(plugin.getConfigManager().getMessage("two-fa-invalid"));
+                    int remaining = twoFaManager.remainingAttempts(uuid);
+
+                    player.sendMessage(plugin.getConfigManager().getMessage("two-fa-invalid")
+                            .replaceText(b -> b.matchLiteral("{remaining}")
+                                    .replacement(String.valueOf(remaining))));
                     asyncLog(player, "2FA_CODE_INVALID",
-                            "Invalid 2FA code attempt #" + rateLimiter.getFailureCount(uuid));
+                            "Invalid 2FA code, remaining attempts=" + remaining);
+
                     if (lockedOut) {
                         long secs = rateLimiter.secondsRemaining(uuid);
                         player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
-                                .replaceText(b -> b.matchLiteral("{seconds}").replacement(String.valueOf(secs))));
+                                .replaceText(b -> b.matchLiteral("{seconds}")
+                                        .replacement(String.valueOf(secs))));
                     }
                 }
-                case NOT_FOUND -> player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
+                case TOO_MANY_ATTEMPTS -> {
+                    // FIX: huỷ session 2FA, kick player.
+                    sessions.invalidate(playerUuid);
+                    twoFaManager.clearCode(uuid);
+                    asyncLog(player, "2FA_TOO_MANY_ATTEMPTS",
+                            "Exceeded max 2FA attempts; kicked.");
+                    player.kick(plugin.getConfigManager()
+                            .getMessageNoPrefix("kick-2fa-too-many-attempts"));
+                }
+                case NOT_FOUND -> player.sendMessage(
+                        plugin.getConfigManager().getMessage("two-fa-required"));
             }
             return true;
         }
@@ -119,7 +140,23 @@ public class LoginCommand implements CommandExecutor {
                         if (lockedOut) {
                             long secs = rateLimiter.secondsRemaining(uuid);
                             player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
-                                    .replaceText(b -> b.matchLiteral("{seconds}").replacement(String.valueOf(secs))));
+                                    .replaceText(b -> b.matchLiteral("{seconds}")
+                                            .replacement(String.valueOf(secs))));
+                        }
+                    });
+                    return;
+                }
+
+                // FIX: Kiểm tra disabled SAU khi password đúng.
+                // Đặt ở đây để không leak thông tin "account này tồn tại và
+                // đang bị disabled" cho kẻ không biết password.
+                if (data.isDisabled()) {
+                    asyncLog(player, "LOGIN_DISABLED",
+                            "Disabled account attempted login");
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            player.kick(plugin.getConfigManager()
+                                    .getMessageNoPrefix("kick-account-disabled"));
                         }
                     });
                     return;
