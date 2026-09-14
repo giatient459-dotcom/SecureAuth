@@ -30,6 +30,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private RateLimiter rateLimiter;
     private TwoFactorManager twoFactorManager;
     private AuditLogger auditLogger;
+    /** FIX #1: lưu reference để có thể gọi reload() khi config đổi. */
+    private CommandBlocker commandBlocker;
 
     @Override
     public void onEnable() {
@@ -57,16 +59,20 @@ public final class SecureAuthPlugin extends JavaPlugin {
         rateLimiter      = new RateLimiter(this);
         twoFactorManager = new TwoFactorManager(this);
 
-        registerCommand("login",      new LoginCommand(this));
-        registerCommand("register",   new RegisterCommand(this));
-        registerCommand("link",       new LinkCommand(this));
-        registerCommand("authadmin",  new AuthAdminCommand(this));
+        // FIX #3: kiểm tra kết quả registerCommand — nếu fail thì dừng onEnable.
+        if (!registerCommand("login",     new LoginCommand(this)))    return;
+        if (!registerCommand("register",  new RegisterCommand(this))) return;
+        if (!registerCommand("link",      new LinkCommand(this)))     return;
+        if (!registerCommand("authadmin", new AuthAdminCommand(this))) return;
 
         // Order: AuthListener first (blocks unauthed), then guards
         getServer().getPluginManager().registerEvents(new AuthListener(this), this);
         getServer().getPluginManager().registerEvents(new OPGuardListener(this), this);
         getServer().getPluginManager().registerEvents(new DangerousCommandListener(this), this);
-        getServer().getPluginManager().registerEvents(new CommandBlocker(this), this);
+
+        // FIX #1: tạo CommandBlocker, lưu reference, rồi mới register.
+        commandBlocker = new CommandBlocker(this);
+        getServer().getPluginManager().registerEvents(commandBlocker, this);
 
         sessionManager.startTimeoutTask();
         rateLimiter.startCleanupTask();
@@ -75,26 +81,51 @@ public final class SecureAuthPlugin extends JavaPlugin {
         getLogger().info("SecureAuth enabled successfully.");
     }
 
-    private void registerCommand(String name, CommandExecutor executor) {
+    /**
+     * FIX #3: trả về boolean thay vì void, để onEnable() biết khi nào cần dừng.
+     * Trước đây disablePlugin() được gọi nhưng onEnable() vẫn chạy tiếp → state
+     * không nhất quán, log rác.
+     */
+    private boolean registerCommand(String name, CommandExecutor executor) {
         PluginCommand cmd = getCommand(name);
         if (cmd == null) {
             getLogger().severe("Command '" + name + "' missing from plugin.yml — disabling plugin.");
             getServer().getPluginManager().disablePlugin(this);
-            return;
+            return false;
         }
         cmd.setExecutor(executor);
+        return true;
+    }
+
+    /**
+     * FIX #2: reload toàn bộ config và các manager có cache.
+     * Gọi từ AuthAdminCommand khi admin chạy /authadmin reload.
+     */
+    public void reload() {
+        reloadConfig();
+        configManager.validate();
+        if (commandBlocker != null) {
+            commandBlocker.reload();
+        }
+        getLogger().info("[SecureAuth] Configuration reloaded.");
+        auditLogger.logSystem("RELOAD", "Configuration reloaded by admin");
     }
 
     @Override
     public void onDisable() {
-        if (sessionManager  != null) sessionManager.shutdown();
-        if (rateLimiter     != null) rateLimiter.shutdown();
-        if (databaseManager != null) databaseManager.close();
+        if (sessionManager  != null) { sessionManager.shutdown();  sessionManager = null; }
+        if (rateLimiter     != null) { rateLimiter.shutdown();     rateLimiter = null; }
+        if (databaseManager != null) { databaseManager.close();    databaseManager = null; }
         if (auditLogger     != null) {
             auditLogger.logSystem("SHUTDOWN", "SecureAuth disabled");
             auditLogger.stop();
+            auditLogger = null;
         }
-        instance = null;
+        // FIX #4: set null hết các manager để tránh giữ reference khi plugin unload.
+        twoFactorManager = null;
+        configManager    = null;
+        commandBlocker   = null;
+        instance         = null;
         getLogger().info("SecureAuth disabled.");
     }
 
@@ -105,4 +136,6 @@ public final class SecureAuthPlugin extends JavaPlugin {
     public RateLimiter getRateLimiter()               { return rateLimiter; }
     public TwoFactorManager getTwoFactorManager()     { return twoFactorManager; }
     public AuditLogger getAuditLogger()               { return auditLogger; }
+    /** FIX #1: getter cho CommandBlocker. */
+    public CommandBlocker getCommandBlocker()         { return commandBlocker; }
 }
