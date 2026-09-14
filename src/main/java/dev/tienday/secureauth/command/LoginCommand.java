@@ -7,7 +7,6 @@ import dev.tienday.secureauth.security.PasswordUtil;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.SessionManager;
-import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -55,13 +54,15 @@ public class LoginCommand implements CommandExecutor {
                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
                 return true;
             }
-            // FIX: luôn lấy args[0]. Trước đây dùng args[length-1] sai vị trí
-            // khi player gõ thừa tham số → code hợp lệ vẫn bị coi là sai.
             String code = args[0];
 
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
                 case VALID -> {
+                    // FIX: clear failure counter sau khi 2FA thành công,
+                    // tránh việc sai 2 lần 2FA trước đó làm giảm budget
+                    // cho lần login sau.
+                    rateLimiter.clearFailures(uuid);
                     sessions.authenticate(playerUuid);
                     AuthListener.revealPlayer(plugin, player);
                     player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
@@ -75,8 +76,6 @@ public class LoginCommand implements CommandExecutor {
                     asyncLog(player, "2FA_CODE_EXPIRED", "Player's 2FA code expired");
                 }
                 case INVALID -> {
-                    // FIX: chỉ log nội bộ, không phụ thuộc rateLimiter password.
-                    // RateLimiter password vẫn được ghi nhận để phòng bruteforce tổng.
                     boolean lockedOut = rateLimiter.recordFailure(uuid);
                     int remaining = twoFaManager.remainingAttempts(uuid);
 
@@ -94,9 +93,9 @@ public class LoginCommand implements CommandExecutor {
                     }
                 }
                 case TOO_MANY_ATTEMPTS -> {
-                    // FIX: huỷ session 2FA, kick player.
                     sessions.invalidate(playerUuid);
                     twoFaManager.clearCode(uuid);
+                    rateLimiter.clearFailures(uuid);
                     asyncLog(player, "2FA_TOO_MANY_ATTEMPTS",
                             "Exceeded max 2FA attempts; kicked.");
                     player.kick(plugin.getConfigManager()
@@ -147,12 +146,9 @@ public class LoginCommand implements CommandExecutor {
                     return;
                 }
 
-                // FIX: Kiểm tra disabled SAU khi password đúng.
-                // Đặt ở đây để không leak thông tin "account này tồn tại và
-                // đang bị disabled" cho kẻ không biết password.
+                // Check disabled SAU khi password đúng (không leak thông tin).
                 if (data.isDisabled()) {
-                    asyncLog(player, "LOGIN_DISABLED",
-                            "Disabled account attempted login");
+                    asyncLog(player, "LOGIN_DISABLED", "Disabled account attempted login");
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (player.isOnline()) {
                             player.kick(plugin.getConfigManager()
@@ -165,7 +161,6 @@ public class LoginCommand implements CommandExecutor {
                 rateLimiter.clearFailures(uuid);
 
                 if (data.isTwoFaEnabled() && data.getDiscordId() != null) {
-                    // If a valid code already exists, reuse it — no new DM.
                     if (twoFaManager.hasPendingCode(uuid)) {
                         sessions.setAwaitingTwoFa(playerUuid);
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -202,7 +197,6 @@ public class LoginCommand implements CommandExecutor {
                     return;
                 }
 
-                // No 2FA -> complete login.
                 plugin.getServer().getScheduler().runTask(plugin, () -> finalizeLogin(player));
             } catch (Throwable t) {
                 plugin.getLogger().log(Level.SEVERE, "Unexpected login error", t);
@@ -231,7 +225,9 @@ public class LoginCommand implements CommandExecutor {
     private void asyncLog(Player player, String eventType, String detail) {
         String uuid = player.getUniqueId().toString();
         String name = player.getName();
-        String ip = safeIp(player);
+        // FIX: capture IP ngay trên thread gọi (thường là main thread),
+        // không gọi player.getAddress() trong async task.
+        final String ip = safeIp(player);
         plugin.getLogger().warning("[SecureAuth][" + eventType + "] " + name + " (" + ip + "): " + detail);
 
         Runnable task = () -> plugin.getDatabaseManager().logEvent(uuid, name, ip, eventType, detail);
