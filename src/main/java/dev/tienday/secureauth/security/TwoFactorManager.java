@@ -19,34 +19,34 @@ public class TwoFactorManager {
 
     private record PendingCode(String code, long expiresAt) { }
 
-    /**
-     * FIX: Thêm TOO_MANY_ATTEMPTS.
-     * Khi player nhập sai code 2FA quá MAX_2FA_ATTEMPTS lần, code bị huỷ
-     * và trả về giá trị này để LoginCommand kick player.
-     */
     public enum VerifyResult { VALID, INVALID, EXPIRED, NOT_FOUND, TOO_MANY_ATTEMPTS }
     public enum SendResult   { SENT, COOLDOWN, FAILED }
 
-    /** FIX: Số lần nhập sai tối đa trước khi huỷ code. */
-    private static final int MAX_2FA_ATTEMPTS = 3;
+    /** FIX: fallback khi config không đọc được. */
+    private static final int DEFAULT_MAX_2FA_ATTEMPTS = 3;
 
     private static final String DIGITS = "0123456789";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SecureAuthPlugin plugin;
-    private final Map<String, PendingCode> pendingCodes  = new ConcurrentHashMap<>();
-    private final Map<String, Long>        lastSentAt    = new ConcurrentHashMap<>();
-    /** FIX: Đếm số lần nhập sai của từng player trong phiên 2FA hiện tại. */
+    private final Map<String, PendingCode> pendingCodes   = new ConcurrentHashMap<>();
+    private final Map<String, Long>        lastSentAt     = new ConcurrentHashMap<>();
     private final Map<String, Integer>     verifyAttempts = new ConcurrentHashMap<>();
 
     public TwoFactorManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /**
-     * Generates a 2FA code, stores it, and asks the bot to DM the player.
-     * BLOCKING — must run off the main thread.
-     */
+    /** FIX: đọc từ config, fallback về default nếu config lỗi/thiếu. */
+    private int maxAttempts() {
+        try {
+            int v = plugin.getConfigManager().getTwoFaMaxAttempts();
+            return v > 0 ? v : DEFAULT_MAX_2FA_ATTEMPTS;
+        } catch (Throwable t) {
+            return DEFAULT_MAX_2FA_ATTEMPTS;
+        }
+    }
+
     public SendResult generateAndSend(String uuid, String discordId) {
         if (uuid == null || discordId == null) return SendResult.FAILED;
 
@@ -66,8 +66,7 @@ public class TwoFactorManager {
 
         pendingCodes.put(uuid, pending);
         lastSentAt.put(uuid, now);
-        // FIX: reset bộ đếm sai mỗi khi gửi code mới.
-        verifyAttempts.remove(uuid);
+        verifyAttempts.remove(uuid);   // reset counter khi gửi code mới
 
         boolean sent = callBotSendDm(discordId, code, expirySec);
         if (!sent) {
@@ -87,13 +86,6 @@ public class TwoFactorManager {
         return Math.max(0, cooldownSec - elapsed);
     }
 
-    /**
-     * FIX: Giới hạn số lần nhập sai.
-     * - Nhập đúng  → reset counter, xoá code, trả VALID.
-     * - Nhập sai lần 1..MAX-1 → tăng counter, trả INVALID (code vẫn còn).
-     * - Nhập sai lần thứ MAX  → xoá code + counter, trả TOO_MANY_ATTEMPTS.
-     * - Hết hạn → xoá code + counter, trả EXPIRED.
-     */
     public VerifyResult verifyCode(String uuid, String input) {
         if (uuid == null || input == null) return VerifyResult.NOT_FOUND;
         PendingCode pending = pendingCodes.get(uuid);
@@ -114,7 +106,7 @@ public class TwoFactorManager {
         }
 
         int attempts = verifyAttempts.merge(uuid, 1, Integer::sum);
-        if (attempts >= MAX_2FA_ATTEMPTS) {
+        if (attempts >= maxAttempts()) {
             pendingCodes.remove(uuid, pending);
             verifyAttempts.remove(uuid);
             return VerifyResult.TOO_MANY_ATTEMPTS;
@@ -133,23 +125,21 @@ public class TwoFactorManager {
         return true;
     }
 
-    /** Số lần nhập sai còn lại của player (dùng để hiển thị cho player). */
     public int remainingAttempts(String uuid) {
-        if (uuid == null) return MAX_2FA_ATTEMPTS;
-        return Math.max(0, MAX_2FA_ATTEMPTS - verifyAttempts.getOrDefault(uuid, 0));
+        if (uuid == null) return maxAttempts();
+        return Math.max(0, maxAttempts() - verifyAttempts.getOrDefault(uuid, 0));
     }
 
-    /** String-keyed variant. */
     public void clearCode(String uuid) {
         if (uuid != null) {
             pendingCodes.remove(uuid);
             lastSentAt.remove(uuid);
-            // FIX: dọn counter khi huỷ phiên.
             verifyAttempts.remove(uuid);
         }
     }
 
-    /** UUID overload — convenience for callers that hold a UUID. */
+    // ---- UUID overloads ----
+
     public void clearCode(UUID uuid) {
         if (uuid != null) clearCode(uuid.toString());
     }
@@ -160,6 +150,14 @@ public class TwoFactorManager {
 
     public long getResendCooldownSeconds(UUID uuid) {
         return uuid == null ? 0 : getResendCooldownSeconds(uuid.toString());
+    }
+
+    public VerifyResult verifyCode(UUID uuid, String input) {
+        return uuid == null ? VerifyResult.NOT_FOUND : verifyCode(uuid.toString(), input);
+    }
+
+    public int remainingAttempts(UUID uuid) {
+        return uuid == null ? maxAttempts() : remainingAttempts(uuid.toString());
     }
 
     // ---- HTTP to bot ----
