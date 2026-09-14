@@ -34,15 +34,22 @@ public class DatabaseManager {
         Class.forName("org.sqlite.JDBC");
         connection = DriverManager.getConnection(url);
 
-        // WAL mode: tăng hiệu năng concurrent read, tránh lock
-        try (Statement st = connection.createStatement()) {
+        applyPragmas(connection);
+
+        createTables();
+        plugin.getLogger().info("SQLite database ready: " + dbFile.getAbsolutePath());
+    }
+
+    /**
+     * FIX #3: Tập trung 3 PRAGMA vào 1 chỗ, dùng cho cả init() và getConn().
+     * Trước đây getConn() thiếu PRAGMA foreign_keys=ON → FK bị tắt âm thầm sau reconnect.
+     */
+    private void applyPragmas(Connection conn) throws SQLException {
+        try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA journal_mode=WAL");
             st.execute("PRAGMA foreign_keys=ON");
             st.execute("PRAGMA busy_timeout=5000");
         }
-
-        createTables();
-        plugin.getLogger().info("SQLite database ready: " + dbFile.getAbsolutePath());
     }
 
     private void createTables() throws SQLException {
@@ -92,18 +99,21 @@ public class DatabaseManager {
         if (connection == null || connection.isClosed()) {
             File dbFile = new File(plugin.getDataFolder(), "secureauth.db");
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            try (Statement st = connection.createStatement()) {
-                st.execute("PRAGMA journal_mode=WAL");
-                st.execute("PRAGMA busy_timeout=5000");
-            }
+            applyPragmas(connection); // FIX #3: dùng chung helper, đủ 3 PRAGMA
         }
         return connection;
     }
 
     // ── Player CRUD ───────────────────────────────────────────────────────────
 
+    /**
+     * FIX #1a: Bỏ `AND disabled = 0` khỏi query.
+     * Lý do: tầng command cần biết player có tồn tại không, và tự xử lý
+     * trạng thái disabled dựa trên PlayerData.isDisabled().
+     * Trước đây player bị disable bị coi như "chưa đăng ký" → kẹt hoàn toàn.
+     */
     public Optional<PlayerData> getPlayer(String uuid) {
-        final String sql = "SELECT * FROM sa_players WHERE uuid = ? AND disabled = 0 LIMIT 1";
+        final String sql = "SELECT * FROM sa_players WHERE uuid = ? LIMIT 1";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             ps.setString(1, uuid);
             try (ResultSet rs = ps.executeQuery()) {
@@ -115,8 +125,14 @@ public class DatabaseManager {
         return Optional.empty();
     }
 
+    /**
+     * FIX #1b: Bỏ `AND disabled = 0`.
+     * isRegistered phải trả về true cho cả account bị disabled — nếu không,
+     * RegisterCommand sẽ cho phép đăng ký lại (dù INSERT OR IGNORE chặn ở DB,
+     * nhưng flow command sẽ báo sai).
+     */
     public boolean isRegistered(String uuid) {
-        final String sql = "SELECT 1 FROM sa_players WHERE uuid = ? AND disabled = 0 LIMIT 1";
+        final String sql = "SELECT 1 FROM sa_players WHERE uuid = ? LIMIT 1";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             ps.setString(1, uuid);
             try (ResultSet rs = ps.executeQuery()) {
@@ -157,8 +173,15 @@ public class DatabaseManager {
         }
     }
 
+    /**
+     * FIX #4: Thêm `disabled = 0` vào SET.
+     * Admin reset password phải đồng thời mở khoá account — trước đây
+     * account bị disable vẫn ở trạng thái disabled sau khi reset.
+     */
     public void resetPassword(String uuid, String newHash) {
-        final String sql = "UPDATE sa_players SET password_hash = ?, discord_id = NULL, two_fa_enabled = 0 WHERE uuid = ?";
+        final String sql = "UPDATE sa_players "
+                + "SET password_hash = ?, discord_id = NULL, two_fa_enabled = 0, disabled = 0 "
+                + "WHERE uuid = ?";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             ps.setString(1, newHash);
             ps.setString(2, uuid);
@@ -223,11 +246,20 @@ public class DatabaseManager {
     /** Result of consuming a link code — carries both uuid and discordId */
     public record LinkConsumeResult(String uuid, String discordId) {}
 
+    /**
+     * FIX #2a: Transaction rollback an toàn.
+     * - Dùng biến local `conn` thay vì field `connection` (tránh nhầm connection
+     *   sau khi getConn() reconnect).
+     * - `setAutoCommit(true)` đặt trong `finally` → đảm bảo luôn chạy dù
+     *   rollback() ném exception. Trước đây nếu rollback() fail, connection
+     *   kẹt ở chế độ transaction → mọi query sau đó không commit được.
+     */
     public void storeLinkCode(String code, String uuid, String discordId, long expiresAt) {
         final String del = "DELETE FROM sa_link_codes WHERE uuid = ?";
         final String ins = "INSERT OR REPLACE INTO sa_link_codes (code, uuid, discord_id, expires_at) VALUES (?, ?, ?, ?)";
+        Connection conn = null;
         try {
-            Connection conn = getConn();
+            conn = getConn();
             conn.setAutoCommit(false);
             try (PreparedStatement ps = conn.prepareStatement(del)) {
                 ps.setString(1, uuid);
@@ -241,21 +273,28 @@ public class DatabaseManager {
                 ps.executeUpdate();
             }
             conn.commit();
-            conn.setAutoCommit(true);
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "storeLinkCode error", e);
-            try { connection.rollback(); connection.setAutoCommit(true); } catch (SQLException ignored) {}
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ignored) {}
+            }
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
         }
     }
 
     /**
      * Validate code, return LinkConsumeResult if valid, delete code (one-time use).
+     * FIX #2b: Áp dụng cùng pattern rollback an toàn như storeLinkCode().
      */
     public Optional<LinkConsumeResult> consumeLinkCode(String code) {
         final String sel = "SELECT uuid, discord_id, expires_at FROM sa_link_codes WHERE code = ? LIMIT 1";
         final String del = "DELETE FROM sa_link_codes WHERE code = ?";
+        Connection conn = null;
         try {
-            Connection conn = getConn();
+            conn = getConn();
             conn.setAutoCommit(false);
             LinkConsumeResult result = null;
             try (PreparedStatement ps = conn.prepareStatement(sel)) {
@@ -275,11 +314,16 @@ public class DatabaseManager {
                 ps.executeUpdate();
             }
             conn.commit();
-            conn.setAutoCommit(true);
             return Optional.ofNullable(result);
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "consumeLinkCode error", e);
-            try { connection.rollback(); connection.setAutoCommit(true); } catch (SQLException ignored) {}
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ignored) {}
+            }
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+            }
         }
         return Optional.empty();
     }
@@ -306,6 +350,10 @@ public class DatabaseManager {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * FIX #1c: Map thêm cột `disabled`.
+     * Yêu cầu PlayerData có constructor nhận 8 tham số (xem file PlayerData bên dưới).
+     */
     private PlayerData mapRow(ResultSet rs) throws SQLException {
         return new PlayerData(
                 rs.getString("uuid"),
@@ -314,7 +362,8 @@ public class DatabaseManager {
                 rs.getString("discord_id"),
                 rs.getInt("two_fa_enabled") == 1,
                 rs.getLong("registered_at"),
-                rs.getLong("last_login_at")
+                rs.getLong("last_login_at"),
+                rs.getInt("disabled") == 1
         );
     }
 
