@@ -97,6 +97,9 @@ public class ConfigManager {
     public int getMaxLoginAttempts() {
         return Math.max(1, plugin.getConfig().getInt("security.max-login-attempts", 5));
     }
+    public int getTwoFaMaxAttempts() {
+        return config.getInt("security.two-fa-max-attempts", 3);
+    }
     public int getLockoutDuration() {
         return Math.max(1, plugin.getConfig().getInt("security.lockout-duration", 300));
     }
