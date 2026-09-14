@@ -19,34 +19,69 @@ public class ConfigManager {
     }
 
     /**
-     * Called once on enable. Warns about weak/missing secrets.
-     * Argon2 getters already clamp values, so we check raw config here
-     * for logging purposes only.
+     * Called once on enable.
+     * FIX: Tự động sửa các giá trị yếu trong config và lưu lại,
+     * thay vì chỉ log warning (trước đây file config vẫn giữ giá trị yếu,
+     * gây nhầm lẫn cho admin và code khác đọc raw config sẽ thấy sai).
+     * Đồng thời kiểm tra HTTPS cho bot API URL.
      */
     public void validate() {
+        boolean dirty = false;
+
         int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
-        int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
-        int rawPar = plugin.getConfig().getInt("security.argon2-parallelism", 4);
-
         if (rawMem < ARGON2_MIN_MEMORY_KB) {
-            plugin.getLogger().warning("security.argon2-memory-kb is below OWASP minimum ("
-                    + ARGON2_MIN_MEMORY_KB + "); value will be clamped at runtime.");
-        }
-        if (rawIt < ARGON2_MIN_ITERATIONS) {
-            plugin.getLogger().warning("security.argon2-iterations is below minimum ("
-                    + ARGON2_MIN_ITERATIONS + "); value will be clamped at runtime.");
-        }
-        if (rawPar < ARGON2_MIN_PARALLELISM) {
-            plugin.getLogger().warning("security.argon2-parallelism is below minimum ("
-                    + ARGON2_MIN_PARALLELISM + "); value will be clamped at runtime.");
+            plugin.getLogger().warning("security.argon2-memory-kb (" + rawMem
+                    + ") below OWASP minimum " + ARGON2_MIN_MEMORY_KB + " — auto-fixing.");
+            plugin.getConfig().set("security.argon2-memory-kb", ARGON2_MIN_MEMORY_KB);
+            dirty = true;
         }
 
+        int rawIt = plugin.getConfig().getInt("security.argon2-iterations", 3);
+        if (rawIt < ARGON2_MIN_ITERATIONS) {
+            plugin.getLogger().warning("security.argon2-iterations (" + rawIt
+                    + ") below minimum " + ARGON2_MIN_ITERATIONS + " — auto-fixing.");
+            plugin.getConfig().set("security.argon2-iterations", ARGON2_MIN_ITERATIONS);
+            dirty = true;
+        }
+
+        int rawPar = plugin.getConfig().getInt("security.argon2-parallelism", 4);
+        if (rawPar < ARGON2_MIN_PARALLELISM) {
+            plugin.getLogger().warning("security.argon2-parallelism (" + rawPar
+                    + ") below minimum " + ARGON2_MIN_PARALLELISM + " — auto-fixing.");
+            plugin.getConfig().set("security.argon2-parallelism", ARGON2_MIN_PARALLELISM);
+            dirty = true;
+        }
+
+        // FIX: cảnh báo và ghi log rõ ràng khi secret chưa đổi.
         String secret = getBotApiSecret();
         if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)) {
             plugin.getLogger().log(Level.WARNING,
-                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure.");
+                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure. "
+                            + "Generate a random 32+ char secret and set it in config.yml.");
         }
 
+        // FIX: HTTPS validation cho bot API URL.
+        // Cho phép localhost (an toàn vì traffic không rời khỏi máy).
+        // Mọi host khác bắt buộc phải là https://, nếu không thì API secret
+        // có thể bị sniff trên đường truyền.
+        String apiUrl = getBotApiUrl();
+        if (apiUrl != null && !apiUrl.isBlank()) {
+            boolean isLocalhost = apiUrl.startsWith("http://127.0.0.1")
+                    || apiUrl.startsWith("http://localhost")
+                    || apiUrl.startsWith("http://[::1]")
+                    || apiUrl.startsWith("http://0:0:0:0:0:0:0:1");
+            boolean isHttps = apiUrl.startsWith("https://");
+            if (!isLocalhost && !isHttps) {
+                plugin.getLogger().log(Level.SEVERE,
+                        "discord-bot.api-url is not HTTPS and not localhost: " + apiUrl
+                                + " — API secret may be intercepted. Use https:// in production.");
+            }
+        }
+
+        if (dirty) {
+            plugin.saveConfig();
+            plugin.getLogger().info("[ConfigManager] Auto-corrected weak security values and saved config.");
+        }
     }
 
     // ---- Database: SQLite — no config needed, file auto-created ----
