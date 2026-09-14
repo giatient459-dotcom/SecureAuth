@@ -10,6 +10,7 @@ security:
   two-fa-code-expiry: 120
   two-fa-code-length: 6
   two-fa-min-resend-interval: 15
+  two-fa-max-attempts: 3
   register-attempts-per-10min: 5
   link-attempts-per-10min: 10
   argon2-iterations: 3
@@ -35,7 +36,7 @@ messages:
   too-many-attempts: "&cQuá nhiều lần thử. Thử lại sau {seconds} giây."
   session-expired: "&cPhiên đăng nhập hết hạn. Vui lòng đăng nhập lại."
   two-fa-required: "&eMã 2FA đã được gửi qua Discord DM. Dùng /login <mã>."
-  two-fa-invalid: "&cMã 2FA không hợp lệ hoặc đã hết hạn."
+  two-fa-invalid: "&cMã 2FA không hợp lệ. Còn {remaining} lần thử."
   two-fa-expired: "&cMã 2FA đã hết hạn. Đăng nhập lại để nhận mã mới."
   two-fa-cooldown: "&eVui lòng đợi {seconds} giây trước khi yêu cầu mã mới."
   discord-not-linked: "&eBạn chưa liên kết Discord. Nhắn bot trên Discord để lấy code, rồi dùng /link <code>."
@@ -45,6 +46,8 @@ messages:
   kick-not-logged-in: "Bạn chưa đăng nhập trong thời gian quy định."
   kick-session-expired: "Phiên đăng nhập hết hạn."
   kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
+  kick-account-disabled: "Tài khoản của bạn đã bị vô hiệu hóa. Liên hệ admin."
+  kick-2fa-too-many-attempts: "Quá nhiều lần nhập sai mã 2FA. Vui lòng đăng nhập lại."
   register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
 
@@ -61,9 +64,7 @@ dangerous-commands:
 
 command-blocker:
   enabled: true
-  # Tin nhắn hiện ra khi bị chặn (giả vờ như command không tồn tại)
   message: "&cUnknown command. Type /help for help."
-  # Danh sách command bị chặn với non-OP (không cần ghi dấu /)
   blocked:
     - "gamemode"
     - "gm"
