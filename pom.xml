@@ -6,13 +6,13 @@
 
     <groupId>dev.tienday</groupId>
     <artifactId>SecureAuth</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>jar</packaging>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.version>1.21.4-R0.1-SNAPSHOT</paper.version>
+        <paper.version>1.20.4-R0.1-SNAPSHOT</paper.version>
     </properties>
 
     <repositories>
@@ -39,11 +39,11 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- SQLite JDBC — không cần cài DB riêng -->
+        <!-- SQLite JDBC — bundle tất cả native libs -->
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
-            <version>3.47.1.0</version>
+            <version>3.45.3.0</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
@@ -90,10 +90,7 @@
                                     <pattern>org.bouncycastle</pattern>
                                     <shadedPattern>dev.tienday.secureauth.libs.bouncycastle</shadedPattern>
                                 </relocation>
-                                <relocation>
-                                    <pattern>org.sqlite</pattern>
-                                    <shadedPattern>dev.tienday.secureauth.libs.sqlite</shadedPattern>
-                                </relocation>
+                                <!-- org.sqlite KHÔNG relocate — native lib dùng class name gốc để tìm .so -->
                             </relocations>
                         </configuration>
                     </execution>
