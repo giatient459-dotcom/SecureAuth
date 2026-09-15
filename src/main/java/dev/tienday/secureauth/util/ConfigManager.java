@@ -18,13 +18,6 @@ public class ConfigManager {
         this.plugin = plugin;
     }
 
-    /**
-     * Called once on enable.
-     * FIX: Tự động sửa các giá trị yếu trong config và lưu lại,
-     * thay vì chỉ log warning (trước đây file config vẫn giữ giá trị yếu,
-     * gây nhầm lẫn cho admin và code khác đọc raw config sẽ thấy sai).
-     * Đồng thời kiểm tra HTTPS cho bot API URL.
-     */
     public void validate() {
         boolean dirty = false;
 
@@ -52,7 +45,6 @@ public class ConfigManager {
             dirty = true;
         }
 
-        // FIX: cảnh báo và ghi log rõ ràng khi secret chưa đổi.
         String secret = getBotApiSecret();
         if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)) {
             plugin.getLogger().log(Level.WARNING,
@@ -60,10 +52,6 @@ public class ConfigManager {
                             + "Generate a random 32+ char secret and set it in config.yml.");
         }
 
-        // FIX: HTTPS validation cho bot API URL.
-        // Cho phép localhost (an toàn vì traffic không rời khỏi máy).
-        // Mọi host khác bắt buộc phải là https://, nếu không thì API secret
-        // có thể bị sniff trên đường truyền.
         String apiUrl = getBotApiUrl();
         if (apiUrl != null && !apiUrl.isBlank()) {
             boolean isLocalhost = apiUrl.startsWith("http://127.0.0.1")
@@ -84,7 +72,7 @@ public class ConfigManager {
         }
     }
 
-    // ---- Database: SQLite — no config needed, file auto-created ----
+    // ---- Database ----
     public boolean isDbVerifyServerCertificate() {
         return plugin.getConfig().getBoolean("database.verify-server-certificate", false);
     }
@@ -97,9 +85,12 @@ public class ConfigManager {
     public int getMaxLoginAttempts() {
         return Math.max(1, plugin.getConfig().getInt("security.max-login-attempts", 5));
     }
+
+    /** FIX: dùng plugin.getConfig() thay vì field `config` không tồn tại. */
     public int getTwoFaMaxAttempts() {
-        return config.getInt("security.two-fa-max-attempts", 3);
+        return Math.max(1, plugin.getConfig().getInt("security.two-fa-max-attempts", 3));
     }
+
     public int getLockoutDuration() {
         return Math.max(1, plugin.getConfig().getInt("security.lockout-duration", 300));
     }
