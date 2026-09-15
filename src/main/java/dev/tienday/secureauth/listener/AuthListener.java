@@ -49,6 +49,34 @@ public class AuthListener implements Listener {
         // Hide the fresh (unauthenticated) player from everyone, and everyone from them.
         applyInitialVanish(player);
 
+        // Teleport đến The End lobby trước khi login
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!player.isOnline()) return;
+                if (plugin.getSessionManager().isAuthenticated(uuid)) return;
+
+                // Lưu vị trí thật để restore sau khi login
+                plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
+
+                // Lấy world The End (tên mặc định: world_the_end)
+                String endWorldName = plugin.getConfig().getString("login-world.end-world", "world_the_end");
+                org.bukkit.World endWorld = plugin.getServer().getWorld(endWorldName);
+
+                if (endWorld != null) {
+                    double x = plugin.getConfig().getDouble("login-world.x", 0.5);
+                    double y = plugin.getConfig().getDouble("login-world.y", 64);
+                    double z = plugin.getConfig().getDouble("login-world.z", 0.5);
+                    float yaw   = (float) plugin.getConfig().getDouble("login-world.yaw", 0);
+                    float pitch = (float) plugin.getConfig().getDouble("login-world.pitch", 0);
+                    player.teleport(new org.bukkit.Location(endWorld, x, y, z, yaw, pitch));
+                } else {
+                    plugin.getLogger().warning("[SecureAuth] Login world '" + endWorldName
+                            + "' not found! Check login-world.end-world in config.yml");
+                }
+            }
+        }.runTaskLater(plugin, 5L); // 5 tick — đủ để client load xong
+
         // Deferred: send the correct prompt after the client is loaded.
         new BukkitRunnable() {
             @Override
@@ -136,7 +164,7 @@ public class AuthListener implements Listener {
         }
     }
 
-    // Paper 1.21: AsyncPlayerChatEvent is deprecated — use AsyncChatEvent (Adventure).
+    // 1.19+ Paper: dùng AsyncChatEvent (Adventure API)
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onChat(AsyncChatEvent event) {
         if (isBlocked(event.getPlayer())) {
@@ -165,7 +193,8 @@ public class AuthListener implements Listener {
 
         if (cmd.equals("login")    || cmd.equals("l")
                 || cmd.equals("register") || cmd.equals("reg")
-                || cmd.equals("link")) {
+                || cmd.equals("link")
+                || cmd.equals("uuid")) {
             return;
         }
 
