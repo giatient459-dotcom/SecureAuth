@@ -17,6 +17,16 @@ security:
   argon2-memory-kb: 65536
   argon2-parallelism: 4
 
+# Nơi player chưa login sẽ bị teleport tới (thường là The End, xa khu vực chơi chính)
+# Sau khi login thành công, plugin sẽ teleport player về đúng vị trí họ đứng lúc join.
+login-world:
+  end-world: "world_the_end"   # Đổi thành tên world thật nếu dùng Multiverse
+  x: 0.5
+  y: 64.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+
 discord-bot:
   api-url: "http://127.0.0.1:8765"
   api-secret: "CHANGE_ME_STRONG_SECRET"
