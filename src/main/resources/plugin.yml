@@ -18,6 +18,10 @@ commands:
   link:
     description: Link your Discord account (use code from bot DM)
     usage: /link <code>
+  uuid:
+    description: Show your Minecraft UUID
+    usage: /uuid
+
   authsetspawn:
     description: Set the login spawn location to your current position
     usage: /authsetspawn
