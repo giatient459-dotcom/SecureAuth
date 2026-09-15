@@ -2,8 +2,6 @@ package dev.tienday.secureauth.listener;
 
 import dev.tienday.secureauth.SecureAuthPlugin;
 import net.kyori.adventure.text.Component;
-import org.bukkit.command.Command;
-import org.bukkit.command.PluginIdentifiableCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,50 +16,45 @@ import java.util.Set;
 
 /**
  * CommandBlocker — chặn và ẩn tab-complete các command trong blacklist
- * với player không phải OP.
+ * với player đã login nhưng không phải OP.
  *
- * Config (config.yml):
- *   command-blocker:
- *     enabled: true
- *     message: "&cKhông tìm thấy lệnh này."
- *     blocked:
- *       - "gamemode"
- *       - "tp"
- *       - ...
- *
- * FIX:
- *  - Resolve alias qua CommandMap: nếu "gamemode" bị block thì "/gm", "/gmc"
- *    cũng bị block (trước đây chỉ block đúng literal trong config).
- *  - Cache blocked set: không tạo HashSet mới mỗi event (perf).
- *  - Public reload() để gọi khi config được reload runtime.
+ * Chạy ở NORMAL priority — sau DangerousCommandListener (LOW) để tránh
+ * double-block và message sai với các command server như /reload, /whitelist.
  */
 public class CommandBlocker implements Listener {
 
     private final SecureAuthPlugin plugin;
 
-    /** Cache blocked set — FIX: tránh tạo HashSet mỗi event. */
-    private volatile Set<String> cachedBlocked = null;
+    // Các command thuộc DangerousCommandListener — không xử lý ở đây
+    private static final Set<String> DANGEROUS_CMDS = Set.of(
+        "stop", "restart", "reload", "timings",
+        "plugins", "pl", "version", "ver", "plugin", "plugman", "pman",
+        "save-all", "save-off", "save-on", "unload", "whitelist",
+        "execute", "minecraft:execute", "sudo"
+    );
 
     public CommandBlocker(SecureAuthPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /** FIX: gọi khi config thay đổi runtime để refresh cache. */
-    public void reload() {
-        this.cachedBlocked = null;
-    }
-
     // ── Chặn khi chạy ────────────────────────────────────────────────────────
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onCommand(PlayerCommandPreprocessEvent event) {
         if (!isEnabled()) return;
 
         Player player = event.getPlayer();
+
+        // Chỉ áp dụng cho player đã login, không phải OP
+        if (!plugin.getSessionManager().isAuthenticated(player.getUniqueId())) return;
         if (player.isOp()) return;
 
         String cmd = extractBase(event.getMessage());
-        if (isBlockedResolved(cmd)) {
+
+        // Nhường DangerousCommandListener xử lý các server command
+        if (DANGEROUS_CMDS.contains(cmd)) return;
+
+        if (isBlocked(cmd)) {
             event.setCancelled(true);
             player.sendMessage(getBlockMessage());
 
@@ -82,10 +75,9 @@ public class CommandBlocker implements Listener {
 
         Set<String> blocked = getBlockedSet();
         event.getCommands().removeIf(cmd -> {
-            String base = normalize(cmd);
-            if (blocked.contains(base)) return true;
-            // FIX: check alias của command này.
-            return isCommandOrAliasBlocked(base, blocked);
+            String base = cmd.toLowerCase(Locale.ROOT)
+                    .replaceFirst("^[a-z0-9_]+:", "");
+            return blocked.contains(base) || blocked.contains(cmd.toLowerCase(Locale.ROOT));
         });
     }
 
@@ -95,75 +87,32 @@ public class CommandBlocker implements Listener {
         return plugin.getConfig().getBoolean("command-blocker.enabled", true);
     }
 
-    /**
-     * FIX: kiểm tra command có bị block không, bao gồm cả alias.
-     * Ví dụ: "gamemode" bị block → "/gm", "/gmc" cũng bị block.
-     */
-    private boolean isBlockedResolved(String cmd) {
-        Set<String> blocked = getBlockedSet();
-        if (blocked.contains(cmd)) return true;
-        return isCommandOrAliasBlocked(cmd, blocked);
+    private boolean isBlocked(String cmd) {
+        return getBlockedSet().contains(cmd);
     }
 
-    private boolean isCommandOrAliasBlocked(String name, Set<String> blocked) {
-        Command bukkitCmd = plugin.getServer().getCommandMap().getCommand(name);
-        if (bukkitCmd == null) return false;
-
-        // Check canonical name
-        String canonical = bukkitCmd.getName().toLowerCase(Locale.ROOT);
-        if (blocked.contains(canonical)) return true;
-
-        // Check aliases
-        for (String alias : bukkitCmd.getAliases()) {
-            if (blocked.contains(alias.toLowerCase(Locale.ROOT))) return true;
-        }
-
-        // Check plugin prefix (nếu là PluginCommand có thể có prefix)
-        if (bukkitCmd instanceof PluginIdentifiableCommand pic) {
-            String pluginName = pic.getPlugin().getName().toLowerCase(Locale.ROOT);
-            if (blocked.contains(pluginName + ":" + canonical)) return true;
-        }
-
-        return false;
-    }
-
-    /** FIX: cache — tạo set một lần duy nhất cho đến khi reload(). */
     private Set<String> getBlockedSet() {
-        Set<String> cached = cachedBlocked;
-        if (cached != null) return cached;
-
-        synchronized (this) {
-            if (cachedBlocked != null) return cachedBlocked;
-
-            List<String> list = plugin.getConfig().getStringList("command-blocker.blocked");
-            Set<String> set = new HashSet<>();
-            for (String entry : list) {
-                if (entry == null) continue;
-                String clean = normalize(entry);
-                if (!clean.isEmpty()) set.add(clean);
-            }
-            cachedBlocked = set;
-            return set;
+        List<String> list = plugin.getConfig().getStringList("command-blocker.blocked");
+        Set<String> set = new HashSet<>();
+        for (String entry : list) {
+            String clean = entry.trim().toLowerCase(Locale.ROOT)
+                    .replaceFirst("^/", "")
+                    .replaceFirst("^[a-z0-9_]+:", "");
+            if (!clean.isEmpty()) set.add(clean);
         }
-    }
-
-    private String normalize(String raw) {
-        return raw.trim().toLowerCase(Locale.ROOT)
-                .replaceFirst("^/", "")
-                .replaceFirst("^[a-z0-9_]+:", "");
+        return set;
     }
 
     private String extractBase(String raw) {
-        String stripped = raw.trim().toLowerCase(Locale.ROOT)
+        return raw.trim().toLowerCase(Locale.ROOT)
                 .replaceFirst("^/", "")
                 .split("\\s+")[0]
                 .replaceFirst("^[a-z0-9_]+:", "");
-        return stripped;
     }
 
     private Component getBlockMessage() {
         String raw = plugin.getConfig().getString(
-                "command-blocker.message", "&cKhông tìm thấy lệnh này.");
+                "command-blocker.message", "&cUnknown command. Type /help for help.");
         return net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
                 .legacyAmpersand().deserialize(raw);
     }
