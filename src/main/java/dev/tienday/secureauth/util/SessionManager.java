@@ -1,6 +1,7 @@
 package dev.tienday.secureauth.util;
 
 import dev.tienday.secureauth.SecureAuthPlugin;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -17,6 +18,8 @@ public class SessionManager {
 
     private final Map<UUID, Long> sessions = new ConcurrentHashMap<>();
     private final Set<UUID> awaitingTwoFa = ConcurrentHashMap.newKeySet();
+    /** FIX: vị trí player trước khi teleport vào The End (để restore sau login). */
+    private final Map<UUID, Location> preLoginLocations = new ConcurrentHashMap<>();
 
     private BukkitTask timeoutTask;
 
@@ -41,7 +44,6 @@ public class SessionManager {
             if (lastActive == null) continue;
             if (now - lastActive <= timeoutMs) continue;
 
-            // Atomic removal — only if value hasn't been refreshed by a concurrent touch().
             if (sessions.remove(uuid, lastActive)) {
                 awaitingTwoFa.remove(uuid);
                 toKick.add(uuid);
@@ -62,8 +64,6 @@ public class SessionManager {
     }
 
     public void setAwaitingTwoFa(UUID uuid) {
-        // Set the awaiting flag BEFORE writing the session entry so that
-        // isAuthenticated() never observes (session=present, awaiting=absent).
         awaitingTwoFa.add(uuid);
         sessions.put(uuid, System.currentTimeMillis());
     }
@@ -86,6 +86,7 @@ public class SessionManager {
     public void invalidate(UUID uuid) {
         sessions.remove(uuid);
         awaitingTwoFa.remove(uuid);
+        preLoginLocations.remove(uuid);
     }
 
     public void shutdown() {
@@ -95,5 +96,23 @@ public class SessionManager {
         }
         sessions.clear();
         awaitingTwoFa.clear();
+        preLoginLocations.clear();
+    }
+
+    // ---- Pre-login location ----
+
+    public void savePreLoginLocation(UUID uuid, Location location) {
+        if (uuid == null || location == null) return;
+        preLoginLocations.put(uuid, location.clone());
+    }
+
+    public Location getPreLoginLocation(UUID uuid) {
+        if (uuid == null) return null;
+        Location loc = preLoginLocations.get(uuid);
+        return loc == null ? null : loc.clone();
+    }
+
+    public void clearPreLoginLocation(UUID uuid) {
+        if (uuid != null) preLoginLocations.remove(uuid);
     }
 }
