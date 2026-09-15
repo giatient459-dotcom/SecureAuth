@@ -7,6 +7,8 @@ import dev.tienday.secureauth.security.PasswordUtil;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.SessionManager;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -59,12 +61,10 @@ public class LoginCommand implements CommandExecutor {
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
                 case VALID -> {
-                    // FIX: clear failure counter sau khi 2FA thành công,
-                    // tránh việc sai 2 lần 2FA trước đó làm giảm budget
-                    // cho lần login sau.
                     rateLimiter.clearFailures(uuid);
                     sessions.authenticate(playerUuid);
                     AuthListener.revealPlayer(plugin, player);
+                    restorePreLoginLocation(player);
                     player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
                     plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in via 2FA");
                     asyncUpdateLastLogin(uuid);
@@ -146,7 +146,6 @@ public class LoginCommand implements CommandExecutor {
                     return;
                 }
 
-                // Check disabled SAU khi password đúng (không leak thông tin).
                 if (data.isDisabled()) {
                     asyncLog(player, "LOGIN_DISABLED", "Disabled account attempted login");
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -211,10 +210,25 @@ public class LoginCommand implements CommandExecutor {
         UUID uuid = player.getUniqueId();
         plugin.getSessionManager().authenticate(uuid);
         AuthListener.revealPlayer(plugin, player);
+        restorePreLoginLocation(player);
         player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
         plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in");
         asyncUpdateLastLogin(uuid.toString());
         asyncLog(player, "LOGIN_SUCCESS", "Password login");
+    }
+
+    /** FIX: teleport player về vị trí trước khi vào The End, fallback về spawn. */
+    private void restorePreLoginLocation(Player player) {
+        UUID uuid = player.getUniqueId();
+        Location saved = plugin.getSessionManager().getPreLoginLocation(uuid);
+        if (saved != null && saved.getWorld() != null) {
+            player.teleport(saved);
+            plugin.getSessionManager().clearPreLoginLocation(uuid);
+        } else {
+            World main = plugin.getServer().getWorlds().isEmpty()
+                    ? null : plugin.getServer().getWorlds().get(0);
+            if (main != null) player.teleport(main.getSpawnLocation());
+        }
     }
 
     private void asyncUpdateLastLogin(String uuid) {
@@ -225,8 +239,6 @@ public class LoginCommand implements CommandExecutor {
     private void asyncLog(Player player, String eventType, String detail) {
         String uuid = player.getUniqueId().toString();
         String name = player.getName();
-        // FIX: capture IP ngay trên thread gọi (thường là main thread),
-        // không gọi player.getAddress() trong async task.
         final String ip = safeIp(player);
         plugin.getLogger().warning("[SecureAuth][" + eventType + "] " + name + " (" + ip + "): " + detail);
 
