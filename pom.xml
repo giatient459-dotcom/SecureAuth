@@ -12,7 +12,9 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <paper.version>1.21.4-R0.1-SNAPSHOT</paper.version>
+        <!-- FIX: hạ xuống 1.19.4 để hỗ trợ rộng (1.19 → 1.21).
+             Nếu chỉ muốn support 1.21.4+ → giữ 1.21.4 -->
+        <paper.version>1.19.4-R0.1-SNAPSHOT</paper.version>
     </properties>
 
     <repositories>
@@ -23,7 +25,6 @@
     </repositories>
 
     <dependencies>
-        <!-- Paper API -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
@@ -31,7 +32,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Argon2id -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
@@ -39,7 +39,6 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- SQLite JDBC — bundle tất cả native libs -->
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
@@ -50,6 +49,19 @@
 
     <build>
         <finalName>${project.artifactId}-${project.version}</finalName>
+
+        <!-- FIX: thêm resource filtering để plugin.yml thay ${project.version} -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>plugin.yml</include>
+                    <include>config.yml</include>
+                </includes>
+            </resource>
+        </resources>
+
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -90,7 +102,7 @@
                                     <pattern>org.bouncycastle</pattern>
                                     <shadedPattern>dev.tienday.secureauth.libs.bouncycastle</shadedPattern>
                                 </relocation>
-                                <!-- org.sqlite KHÔNG relocate — native lib dùng class name gốc để tìm .so -->
+                                <!-- org.sqlite KHÔNG relocate — native lib dùng class name gốc -->
                             </relocations>
                         </configuration>
                     </execution>
