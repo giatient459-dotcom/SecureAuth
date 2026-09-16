@@ -58,8 +58,6 @@ public class DangerousCommandListener implements Listener {
             // Group B: Plugin management
             Map.entry("plugins",         PLUGIN),
             Map.entry("pl",              PLUGIN),
-            Map.entry("version",         PLUGIN),
-            Map.entry("ver",             PLUGIN),
             Map.entry("plugin",          PLUGIN),
             Map.entry("plugman",         PLUGIN),
             Map.entry("pman",            PLUGIN),
@@ -85,7 +83,7 @@ public class DangerousCommandListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = false)
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onCommand(PlayerCommandPreprocessEvent event) {
         Player player = event.getPlayer();
         String raw    = event.getMessage().trim();
