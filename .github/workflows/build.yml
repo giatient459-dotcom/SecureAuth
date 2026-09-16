@@ -25,8 +25,26 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      # ---------- TEST JAVA ----------
+      - name: Verify Java toolchain
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          javac -version
+          mvn -version
+
+      - name: Compile main sources (no package)
+        run: mvn -B compile --no-transfer-progress
+
+      - name: Run tests (nếu có)
+        # --fail-if-no-tests=false để không fail khi chưa viết test
+        # Đổi thành true khi bạn đã có unit test thật
+        run: mvn -B test --no-transfer-progress -DfailIfNoTests=false
+        continue-on-error: false
+      # ---------- /TEST JAVA ----------
+
       - name: Build with Maven
-        run: mvn -B package --no-transfer-progress
+        run: mvn -B package --no-transfer-progress -DskipTests
 
       - name: Get version from pom.xml
         id: get_version
