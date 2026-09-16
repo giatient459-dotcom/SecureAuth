@@ -70,12 +70,6 @@ public class AuthAdminCommand implements CommandExecutor {
         Player online = plugin.getServer().getPlayerExact(name);
         if (online != null) return online;
 
-        OfflinePlayer cached = plugin.getServer().getOfflinePlayerIfCached(name);
-        if (cached != null && (cached.hasPlayedBefore() || cached.isOnline())
-                && cached.getUniqueId() != null) {
-            return cached;
-        }
-
         OfflinePlayer offline = plugin.getServer().getOfflinePlayer(name);
         if (offline != null && (offline.hasPlayedBefore() || offline.isOnline())
                 && offline.getUniqueId() != null) {
