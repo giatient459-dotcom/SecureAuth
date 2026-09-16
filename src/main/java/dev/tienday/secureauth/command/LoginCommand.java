@@ -218,18 +218,19 @@ public class LoginCommand implements CommandExecutor {
     }
 
     /** FIX: teleport player về vị trí trước khi vào The End, fallback về spawn. */
-    private void restorePreLoginLocation(Player player) {
-        UUID uuid = player.getUniqueId();
-        Location saved = plugin.getSessionManager().savePreLoginLocation();
-        if (saved != null && saved.getWorld() != null) {
-            player.teleport(saved);
-            plugin.getSessionManager().restorePreLoginLocation();
-        } else {
-            World main = plugin.getServer().getWorlds().isEmpty()
-                    ? null : plugin.getServer().getWorlds().get(0);
-            if (main != null) player.teleport(main.getSpawnLocation());
-        }
+    /** Teleport player về vị trí trước khi vào The End, fallback về spawn. */
+private void restorePreLoginLocation(Player player) {
+    UUID uuid = player.getUniqueId();
+    Location saved = plugin.getSessionManager().getPreLoginLocation(uuid);   // ← FIX
+    if (saved != null && saved.getWorld() != null) {
+        player.teleport(saved);
+        plugin.getSessionManager().clearPreLoginLocation(uuid);              // ← FIX
+    } else {
+        World main = plugin.getServer().getWorlds().isEmpty()
+                ? null : plugin.getServer().getWorlds().get(0);
+        if (main != null) player.teleport(main.getSpawnLocation());
     }
+}
 
     private void asyncUpdateLastLogin(String uuid) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin,
