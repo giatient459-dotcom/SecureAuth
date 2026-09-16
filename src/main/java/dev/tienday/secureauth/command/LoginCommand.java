@@ -220,10 +220,10 @@ public class LoginCommand implements CommandExecutor {
     /** FIX: teleport player về vị trí trước khi vào The End, fallback về spawn. */
     private void restorePreLoginLocation(Player player) {
         UUID uuid = player.getUniqueId();
-        Location saved = plugin.getSessionManager().getPreLoginLocation(uuid);
+        Location saved = plugin.getSessionManager().savePreLoginLocation();
         if (saved != null && saved.getWorld() != null) {
             player.teleport(saved);
-            plugin.getSessionManager().clearPreLoginLocation(uuid);
+            plugin.getSessionManager().restorePreLoginLocation();
         } else {
             World main = plugin.getServer().getWorlds().isEmpty()
                     ? null : plugin.getServer().getWorlds().get(0);
