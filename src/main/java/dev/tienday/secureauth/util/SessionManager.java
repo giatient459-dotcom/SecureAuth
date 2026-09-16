@@ -43,7 +43,6 @@ public class SessionManager {
             if (lastActive == null) continue;
             if (now - lastActive <= timeoutMs) continue;
 
-            // Atomic removal — only if value hasn't been refreshed by a concurrent touch().
             if (sessions.remove(uuid, lastActive)) {
                 awaitingTwoFa.remove(uuid);
                 toKick.add(uuid);
@@ -64,8 +63,6 @@ public class SessionManager {
     }
 
     public void setAwaitingTwoFa(UUID uuid) {
-        // Set the awaiting flag BEFORE writing the session entry so that
-        // isAuthenticated() never observes (session=present, awaiting=absent).
         awaitingTwoFa.add(uuid);
         sessions.put(uuid, System.currentTimeMillis());
     }
@@ -91,31 +88,24 @@ public class SessionManager {
         preLoginLocations.remove(uuid);
     }
 
-    /** Lưu vị trí thật trước khi tp đến End lobby */
+    // ---- Pre-login location ----
+
+    /** Lưu vị trí player đứng lúc join (trước khi bị teleport vào End). */
     public void savePreLoginLocation(UUID uuid, Location loc) {
+        if (uuid == null || loc == null) return;
         preLoginLocations.put(uuid, loc.clone());
     }
 
-    /**
-     * Restore vị trí thật sau khi login thành công.
-     * Nếu không có vị trí lưu (lần đầu join) → giữ nguyên spawn.
-     */
-    public void restoreLocationAfterLogin(Player player) {
-        Location saved = preLoginLocations.remove(player.getUniqueId());
-        String endWorld = plugin.getConfig().getString("login-world.end-world", "world_the_end");
+    /** Lấy vị trí đã lưu. Trả về null nếu chưa có. */
+    public Location getPreLoginLocation(UUID uuid) {
+        if (uuid == null) return null;
+        Location loc = preLoginLocations.get(uuid);
+        return loc == null ? null : loc.clone();
+    }
 
-        if (saved != null && saved.getWorld() != null
-                && !saved.getWorld().getName().equals(endWorld)) {
-            // Có vị trí lưu và không phải End → restore
-            player.teleport(saved);
-        } else {
-            // Không có vị trí lưu (lần đầu join) hoặc vị trí lưu là End
-            // → tp về spawn của world mặc định
-            org.bukkit.World defaultWorld = plugin.getServer().getWorlds().get(0);
-            if (defaultWorld != null) {
-                player.teleport(defaultWorld.getSpawnLocation());
-            }
-        }
+    /** Xoá vị trí đã lưu (gọi sau khi restore xong). */
+    public void clearPreLoginLocation(UUID uuid) {
+        if (uuid != null) preLoginLocations.remove(uuid);
     }
 
     public void shutdown() {
