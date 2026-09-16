@@ -33,7 +33,6 @@
     </repositories>
 
     <dependencies>
-        <!-- Spigot API — compile against version cũ nhất muốn hỗ trợ -->
         <dependency>
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
@@ -41,7 +40,6 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Paper API — cần cho AsyncChatEvent (Adventure) -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
@@ -50,21 +48,14 @@
         </dependency>
 
         <!--
-            BouncyCastle — cung cấp Argon2BytesGenerator, Argon2Parameters.
-            PasswordUtil.java import trực tiếp 2 class này → BẮT BUỘC.
-            bcprov-jdk18on = bản mới nhất cho Java 8+, dùng cho Java 21 OK.
+            BouncyCastle — cung cấp Argon2BytesGenerator + Argon2Parameters.
+            bcprov-jdk18on = bản mới, hỗ trợ Java 8+ (bao gồm Java 21).
+            Không cần argon2-jvm vì PasswordUtil viết PHC format thủ công.
         -->
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
             <version>1.78.1</version>
-        </dependency>
-
-        <!-- Argon2 wrapper (tùy chọn) — nếu PasswordUtil dùng luôn cả wrapper này -->
-        <dependency>
-            <groupId>de.mkammerer</groupId>
-            <artifactId>argon2-jvm</artifactId>
-            <version>2.11</version>
         </dependency>
     </dependencies>
 
@@ -90,7 +81,6 @@
                 </configuration>
             </plugin>
 
-            <!-- Shade BouncyCastle + Argon2 vào JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -104,14 +94,9 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <relocations>
-                                <!-- Relocate BouncyCastle để tránh conflict với plugin khác -->
                                 <relocation>
                                     <pattern>org.bouncycastle</pattern>
                                     <shadedPattern>dev.tienday.secureauth.libs.bouncycastle</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>de.mkammerer</pattern>
-                                    <shadedPattern>dev.tienday.secureauth.libs.argon2</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>
@@ -121,6 +106,7 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/versions/**</exclude>
                                         <exclude>module-info.class</exclude>
                                     </excludes>
                                 </filter>
