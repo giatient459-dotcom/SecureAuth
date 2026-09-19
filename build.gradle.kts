@@ -33,7 +33,7 @@ tasks.processResources {
 
 tasks.shadowJar {
     archiveClassifier.set("")
-    archiveFileName.set("\( {project.name}- \){project.version}.jar")
+    archiveFileName.set("( {project.name}- ){project.version}.jar")
 
     relocate("org.bouncycastle", "dev.tienday.secureauth.libs.bouncycastle")
     // org.sqlite KHÔNG relocate
