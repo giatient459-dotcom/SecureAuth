@@ -8,9 +8,9 @@ import java.util.logging.Level;
 
 public class ConfigManager {
 
-    public static final int ARGON2_MIN_MEMORY_KB    = 19 * 1024;
-    public static final int ARGON2_MIN_ITERATIONS   = 2;
-    public static final int ARGON2_MIN_PARALLELISM  = 1;
+    public static final int ARGON2_MIN_MEMORY_KB   = 19 * 1024;
+    public static final int ARGON2_MIN_ITERATIONS  = 2;
+    public static final int ARGON2_MIN_PARALLELISM = 1;
 
     private final SecureAuthPlugin plugin;
 
@@ -18,63 +18,33 @@ public class ConfigManager {
         this.plugin = plugin;
     }
 
+    /**
+     * Called once on enable. Warns about weak/missing secrets.
+     * Argon2 getters already clamp values — chỉ log raw config.
+     */
     public void validate() {
-        boolean dirty = false;
-
         int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
-        if (rawMem < ARGON2_MIN_MEMORY_KB) {
-            plugin.getLogger().warning("security.argon2-memory-kb (" + rawMem
-                    + ") below OWASP minimum " + ARGON2_MIN_MEMORY_KB + " — auto-fixing.");
-            plugin.getConfig().set("security.argon2-memory-kb", ARGON2_MIN_MEMORY_KB);
-            dirty = true;
-        }
-
-        int rawIt = plugin.getConfig().getInt("security.argon2-iterations", 3);
-        if (rawIt < ARGON2_MIN_ITERATIONS) {
-            plugin.getLogger().warning("security.argon2-iterations (" + rawIt
-                    + ") below minimum " + ARGON2_MIN_ITERATIONS + " — auto-fixing.");
-            plugin.getConfig().set("security.argon2-iterations", ARGON2_MIN_ITERATIONS);
-            dirty = true;
-        }
-
+        int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
         int rawPar = plugin.getConfig().getInt("security.argon2-parallelism", 4);
+
+        if (rawMem < ARGON2_MIN_MEMORY_KB) {
+            plugin.getLogger().warning("security.argon2-memory-kb is below OWASP minimum ("
+                    + ARGON2_MIN_MEMORY_KB + "); value will be clamped at runtime.");
+        }
+        if (rawIt < ARGON2_MIN_ITERATIONS) {
+            plugin.getLogger().warning("security.argon2-iterations is below minimum ("
+                    + ARGON2_MIN_ITERATIONS + "); value will be clamped at runtime.");
+        }
         if (rawPar < ARGON2_MIN_PARALLELISM) {
-            plugin.getLogger().warning("security.argon2-parallelism (" + rawPar
-                    + ") below minimum " + ARGON2_MIN_PARALLELISM + " — auto-fixing.");
-            plugin.getConfig().set("security.argon2-parallelism", ARGON2_MIN_PARALLELISM);
-            dirty = true;
+            plugin.getLogger().warning("security.argon2-parallelism is below minimum ("
+                    + ARGON2_MIN_PARALLELISM + "); value will be clamped at runtime.");
         }
 
         String secret = getBotApiSecret();
         if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)) {
             plugin.getLogger().log(Level.WARNING,
-                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure. "
-                            + "Generate a random 32+ char secret and set it in config.yml.");
+                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure.");
         }
-
-        String apiUrl = getBotApiUrl();
-        if (apiUrl != null && !apiUrl.isBlank()) {
-            boolean isLocalhost = apiUrl.startsWith("http://127.0.0.1")
-                    || apiUrl.startsWith("http://localhost")
-                    || apiUrl.startsWith("http://[::1]")
-                    || apiUrl.startsWith("http://0:0:0:0:0:0:0:1");
-            boolean isHttps = apiUrl.startsWith("https://");
-            if (!isLocalhost && !isHttps) {
-                plugin.getLogger().log(Level.SEVERE,
-                        "discord-bot.api-url is not HTTPS and not localhost: " + apiUrl
-                                + " — API secret may be intercepted. Use https:// in production.");
-            }
-        }
-
-        if (dirty) {
-            plugin.saveConfig();
-            plugin.getLogger().info("[ConfigManager] Auto-corrected weak security values and saved config.");
-        }
-    }
-
-    // ---- Database ----
-    public boolean isDbVerifyServerCertificate() {
-        return plugin.getConfig().getBoolean("database.verify-server-certificate", false);
     }
 
     // ---- Security ----
@@ -82,68 +52,108 @@ public class ConfigManager {
     public int getSessionTimeout() {
         return Math.max(30, plugin.getConfig().getInt("security.session-timeout", 300));
     }
+
     public int getMaxLoginAttempts() {
         return Math.max(1, plugin.getConfig().getInt("security.max-login-attempts", 5));
-    }
-
-    /** FIX: dùng plugin.getConfig() thay vì field `config` không tồn tại. */
-    public int getTwoFaMaxAttempts() {
-        return Math.max(1, plugin.getConfig().getInt("security.two-fa-max-attempts", 3));
     }
 
     public int getLockoutDuration() {
         return Math.max(1, plugin.getConfig().getInt("security.lockout-duration", 300));
     }
+
     public int getTwoFaCodeExpiry() {
         return Math.max(30, plugin.getConfig().getInt("security.two-fa-code-expiry", 120));
     }
+
     public int getTwoFaCodeLength() {
         return Math.min(10, Math.max(4, plugin.getConfig().getInt("security.two-fa-code-length", 6)));
     }
+
     public int getTwoFaMinResendInterval() {
         return Math.max(0, plugin.getConfig().getInt("security.two-fa-min-resend-interval", 15));
     }
+
     public int getRegisterAttemptsPer10Min() {
         return Math.max(1, plugin.getConfig().getInt("security.register-attempts-per-10min", 5));
     }
+
     public int getLinkAttemptsPer10Min() {
         return Math.max(1, plugin.getConfig().getInt("security.link-attempts-per-10min", 10));
     }
+
     public int getArgon2Iterations() {
         return Math.max(ARGON2_MIN_ITERATIONS, plugin.getConfig().getInt("security.argon2-iterations", 3));
     }
+
     public int getArgon2MemoryKb() {
         return Math.max(ARGON2_MIN_MEMORY_KB, plugin.getConfig().getInt("security.argon2-memory-kb", 65536));
     }
+
     public int getArgon2Parallelism() {
         return Math.max(ARGON2_MIN_PARALLELISM, plugin.getConfig().getInt("security.argon2-parallelism", 4));
     }
 
     // ---- OP Guard ----
 
-    public boolean isOpGuardBlockOpCommands()   { return plugin.getConfig().getBoolean("op-guard.block-op-commands", true); }
-    public boolean isOpGuardBlockBypassGrants() { return plugin.getConfig().getBoolean("op-guard.block-bypass-grants", true); }
+    public boolean isOpGuardBlockOpCommands() {
+        return plugin.getConfig().getBoolean("op-guard.block-op-commands", true);
+    }
+
+    public boolean isOpGuardBlockBypassGrants() {
+        return plugin.getConfig().getBoolean("op-guard.block-bypass-grants", true);
+    }
 
     // ---- Dangerous Commands ----
 
-    public boolean isDangerousCommandsEnabled() { return plugin.getConfig().getBoolean("dangerous-commands.enabled", true); }
+    public boolean isDangerousCommandsEnabled() {
+        return plugin.getConfig().getBoolean("dangerous-commands.enabled", true);
+    }
+
     public java.util.List<String> getDangerousCommandsExtra() {
         return plugin.getConfig().getStringList("dangerous-commands.extra-protected");
     }
+
     public java.util.List<String> getConsoleOnlyCommands() {
         return plugin.getConfig().getStringList("dangerous-commands.console-only");
     }
 
-// ---- Discord Bot API ----
+    // ---- Velocity Integration ----
 
-public String getBotApiUrl()     { return plugin.getConfig().getString("discord-bot.api-url", "http://127.0.0.1:8765"); }
-public String getBotApiSecret()  { return plugin.getConfig().getString("discord-bot.api-secret", ""); }
-public int    getBotApiTimeout() { return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000)); }
+    /**
+     * URL Velocity HTTP server lắng nghe.
+     * Để trống nếu không dùng Velocity.
+     * Ví dụ: http://127.0.0.1:20334/auth/notify
+     */
+    public String getVelocityNotifyUrl() {
+        return plugin.getConfig().getString("velocity.notify-url", "");
+    }
 
-/** Cổng HTTP nội bộ plugin lắng nghe (bot gọi vào). 0 = tắt. */
-public int getPluginHttpPort() {
-    return Math.max(0, Math.min(65535, plugin.getConfig().getInt("discord-bot.plugin-http-port", 20334)));
-}
+    public String getBackendSecret() {
+        return plugin.getConfig().getString("velocity.backend-secret", "");
+    }
+
+    // ---- Discord Bot API ----
+
+    public String getBotApiUrl() {
+        return plugin.getConfig().getString("discord-bot.api-url", "http://127.0.0.1:8765");
+    }
+
+    public String getBotApiSecret() {
+        return plugin.getConfig().getString("discord-bot.api-secret", "");
+    }
+
+    public int getBotApiTimeout() {
+        return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000));
+    }
+
+    /**
+     * Cổng HTTP nội bộ plugin lắng nghe (bot gọi vào).
+     * 0 = tắt. Mặc định 20334.
+     */
+    public int getPluginHttpPort() {
+        return Math.max(0, Math.min(65535,
+                plugin.getConfig().getInt("discord-bot.plugin-http-port", 20334)));
+    }
 
     // ---- Messages ----
 
