@@ -134,11 +134,16 @@ public class ConfigManager {
         return plugin.getConfig().getStringList("dangerous-commands.console-only");
     }
 
-    // ---- Discord Bot API ----
+// ---- Discord Bot API ----
 
-    public String getBotApiUrl()     { return plugin.getConfig().getString("discord-bot.api-url", "http://127.0.0.1:8765"); }
-    public String getBotApiSecret()  { return plugin.getConfig().getString("discord-bot.api-secret", ""); }
-    public int    getBotApiTimeout() { return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000)); }
+public String getBotApiUrl()     { return plugin.getConfig().getString("discord-bot.api-url", "http://127.0.0.1:8765"); }
+public String getBotApiSecret()  { return plugin.getConfig().getString("discord-bot.api-secret", ""); }
+public int    getBotApiTimeout() { return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000)); }
+
+/** Cổng HTTP nội bộ plugin lắng nghe (bot gọi vào). 0 = tắt. */
+public int getPluginHttpPort() {
+    return Math.max(0, Math.min(65535, plugin.getConfig().getInt("discord-bot.plugin-http-port", 20334)));
+}
 
     // ---- Messages ----
 
