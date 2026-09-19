@@ -2,17 +2,17 @@ name: Build
 
 on:
   push:
-    branches-ignore:
-      - '**'   # không trigger khi push branch thường
+    branches:
+      - '**'        # trigger mọi lần push bất kỳ branch
     tags:
-      - 'v*'   # chỉ trigger khi push tag kiểu v1.0.0
-  workflow_dispatch:  # cho phép chạy thủ công từ GitHub UI
+      - 'v*'        # trigger khi push tag v1.0.0
+  workflow_dispatch: # chạy thủ công từ GitHub UI
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # cần để tạo Release
+      contents: write
 
     steps:
       - name: Checkout source
@@ -25,26 +25,8 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # ---------- TEST JAVA ----------
-      - name: Verify Java toolchain
-        run: |
-          echo "JAVA_HOME=$JAVA_HOME"
-          java -version
-          javac -version
-          mvn -version
-
-      - name: Compile main sources (no package)
-        run: mvn -B compile --no-transfer-progress
-
-      - name: Run tests (nếu có)
-        # --fail-if-no-tests=false để không fail khi chưa viết test
-        # Đổi thành true khi bạn đã có unit test thật
-        run: mvn -B test --no-transfer-progress -DfailIfNoTests=false
-        continue-on-error: false
-      # ---------- /TEST JAVA ----------
-
       - name: Build with Maven
-        run: mvn -B package --no-transfer-progress -DskipTests
+        run: mvn -B package --no-transfer-progress
 
       - name: Get version from pom.xml
         id: get_version
@@ -52,6 +34,65 @@ jobs:
           VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "jar=target/SecureAuth-${VERSION}.jar" >> $GITHUB_OUTPUT
+
+      - name: Test JAR
+        run: |
+          JAR="${{ steps.get_version.outputs.jar }}"
+
+          # 1. File tồn tại và không rỗng
+          if [ ! -f "$JAR" ]; then
+            echo "❌ JAR not found: $JAR"
+            exit 1
+          fi
+          SIZE=$(stat -c%s "$JAR")
+          echo "✅ JAR exists — size: $SIZE bytes"
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "❌ JAR too small ($SIZE bytes) — likely a broken shade"
+            exit 1
+          fi
+
+          # 2. Là file ZIP/JAR hợp lệ
+          if ! unzip -t "$JAR" > /dev/null 2>&1; then
+            echo "❌ JAR is not a valid zip"
+            exit 1
+          fi
+          echo "✅ JAR is valid zip"
+
+          # 3. plugin.yml tồn tại
+          if ! unzip -p "$JAR" plugin.yml > /dev/null 2>&1; then
+            echo "❌ plugin.yml missing from JAR"
+            exit 1
+          fi
+          echo "✅ plugin.yml present"
+
+          # 4. Main class tồn tại trong JAR
+          MAIN_CLASS="dev/tienday/secureauth/SecureAuthPlugin.class"
+          if ! unzip -l "$JAR" | grep -q "$MAIN_CLASS"; then
+            echo "❌ Main class missing: $MAIN_CLASS"
+            exit 1
+          fi
+          echo "✅ Main class present"
+
+          # 5. SQLite và Argon2 đã được shade vào
+          if ! unzip -l "$JAR" | grep -q "org/sqlite"; then
+            echo "❌ SQLite not shaded into JAR"
+            exit 1
+          fi
+          echo "✅ SQLite shaded"
+
+          if ! unzip -l "$JAR" | grep -q "bouncycastle\|bcprov"; then
+            echo "❌ BouncyCastle (Argon2) not shaded into JAR"
+            exit 1
+          fi
+          echo "✅ BouncyCastle shaded"
+
+          # 6. In plugin.yml để xác nhận version
+          echo "--- plugin.yml ---"
+          unzip -p "$JAR" plugin.yml
+          echo "--- end ---"
+
+          echo ""
+          echo "✅ All tests passed"
 
       - name: Upload JAR as artifact (mọi lần build)
         uses: actions/upload-artifact@v4
