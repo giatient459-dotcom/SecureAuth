@@ -49,15 +49,15 @@ public class AuthListener implements Listener {
         // Hide the fresh (unauthenticated) player from everyone, and everyone from them.
         applyInitialVanish(player);
 
+        // Lưu vị trí thật NGAY (tick 0) trước khi bất kỳ teleport nào xảy ra
+        plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
+
         // Teleport đến The End lobby trước khi login
         new BukkitRunnable() {
             @Override
             public void run() {
                 if (!player.isOnline()) return;
                 if (plugin.getSessionManager().isAuthenticated(uuid)) return;
-
-                // Lưu vị trí thật để restore sau khi login
-                plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
 
                 // Lấy world The End (tên mặc định: world_the_end)
                 String endWorldName = plugin.getConfig().getString("login-world.end-world", "world_the_end");
