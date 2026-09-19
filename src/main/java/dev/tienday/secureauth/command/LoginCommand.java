@@ -7,8 +7,6 @@ import dev.tienday.secureauth.security.PasswordUtil;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.SessionManager;
-import org.bukkit.Location;
-import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -56,15 +54,14 @@ public class LoginCommand implements CommandExecutor {
                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
                 return true;
             }
-            String code = args[0];
+            String code = args[args.length == 1 ? 0 : 1];
 
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
                 case VALID -> {
-                    rateLimiter.clearFailures(uuid);
                     sessions.authenticate(playerUuid);
+                    plugin.getSessionManager().restoreLocationAfterLogin(player);
                     AuthListener.revealPlayer(plugin, player);
-                    restorePreLoginLocation(player);
                     player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
                     plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in via 2FA");
                     asyncUpdateLastLogin(uuid);
@@ -77,32 +74,16 @@ public class LoginCommand implements CommandExecutor {
                 }
                 case INVALID -> {
                     boolean lockedOut = rateLimiter.recordFailure(uuid);
-                    int remaining = twoFaManager.remainingAttempts(uuid);
-
-                    player.sendMessage(plugin.getConfigManager().getMessage("two-fa-invalid")
-                            .replaceText(b -> b.matchLiteral("{remaining}")
-                                    .replacement(String.valueOf(remaining))));
+                    player.sendMessage(plugin.getConfigManager().getMessage("two-fa-invalid"));
                     asyncLog(player, "2FA_CODE_INVALID",
-                            "Invalid 2FA code, remaining attempts=" + remaining);
-
+                            "Invalid 2FA code attempt #" + rateLimiter.getFailureCount(uuid));
                     if (lockedOut) {
                         long secs = rateLimiter.secondsRemaining(uuid);
                         player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
-                                .replaceText(b -> b.matchLiteral("{seconds}")
-                                        .replacement(String.valueOf(secs))));
+                                .replaceText(b -> b.matchLiteral("{seconds}").replacement(String.valueOf(secs))));
                     }
                 }
-                case TOO_MANY_ATTEMPTS -> {
-                    sessions.invalidate(playerUuid);
-                    twoFaManager.clearCode(uuid);
-                    rateLimiter.clearFailures(uuid);
-                    asyncLog(player, "2FA_TOO_MANY_ATTEMPTS",
-                            "Exceeded max 2FA attempts; kicked.");
-                    player.kick(plugin.getConfigManager()
-                            .getMessageNoPrefix("kick-2fa-too-many-attempts"));
-                }
-                case NOT_FOUND -> player.sendMessage(
-                        plugin.getConfigManager().getMessage("two-fa-required"));
+                case NOT_FOUND -> player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
             }
             return true;
         }
@@ -139,19 +120,7 @@ public class LoginCommand implements CommandExecutor {
                         if (lockedOut) {
                             long secs = rateLimiter.secondsRemaining(uuid);
                             player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
-                                    .replaceText(b -> b.matchLiteral("{seconds}")
-                                            .replacement(String.valueOf(secs))));
-                        }
-                    });
-                    return;
-                }
-
-                if (data.isDisabled()) {
-                    asyncLog(player, "LOGIN_DISABLED", "Disabled account attempted login");
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        if (player.isOnline()) {
-                            player.kick(plugin.getConfigManager()
-                                    .getMessageNoPrefix("kick-account-disabled"));
+                                    .replaceText(b -> b.matchLiteral("{seconds}").replacement(String.valueOf(secs))));
                         }
                     });
                     return;
@@ -160,6 +129,7 @@ public class LoginCommand implements CommandExecutor {
                 rateLimiter.clearFailures(uuid);
 
                 if (data.isTwoFaEnabled() && data.getDiscordId() != null) {
+                    // If a valid code already exists, reuse it — no new DM.
                     if (twoFaManager.hasPendingCode(uuid)) {
                         sessions.setAwaitingTwoFa(playerUuid);
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
@@ -196,6 +166,7 @@ public class LoginCommand implements CommandExecutor {
                     return;
                 }
 
+                // No 2FA -> complete login.
                 plugin.getServer().getScheduler().runTask(plugin, () -> finalizeLogin(player));
             } catch (Throwable t) {
                 plugin.getLogger().log(Level.SEVERE, "Unexpected login error", t);
@@ -209,28 +180,53 @@ public class LoginCommand implements CommandExecutor {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         plugin.getSessionManager().authenticate(uuid);
+        plugin.getSessionManager().restoreLocationAfterLogin(player);
         AuthListener.revealPlayer(plugin, player);
-        restorePreLoginLocation(player);
         player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
         plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in");
         asyncUpdateLastLogin(uuid.toString());
         asyncLog(player, "LOGIN_SUCCESS", "Password login");
+        // Báo Velocity biết player đã xác thực
+        notifyVelocity(uuid.toString());
     }
 
-    /** FIX: teleport player về vị trí trước khi vào The End, fallback về spawn. */
-    /** Teleport player về vị trí trước khi vào The End, fallback về spawn. */
-private void restorePreLoginLocation(Player player) {
-    UUID uuid = player.getUniqueId();
-    Location saved = plugin.getSessionManager().getPreLoginLocation(uuid);   // ← FIX
-    if (saved != null && saved.getWorld() != null) {
-        player.teleport(saved);
-        plugin.getSessionManager().clearPreLoginLocation(uuid);              // ← FIX
-    } else {
-        World main = plugin.getServer().getWorlds().isEmpty()
-                ? null : plugin.getServer().getWorlds().get(0);
-        if (main != null) player.teleport(main.getSpawnLocation());
+    /**
+     * Gọi HTTP POST đến Velocity plugin để đánh dấu session authenticated.
+     * Chạy async để không block main thread.
+     */
+    private void notifyVelocity(String uuid) {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            String velocityUrl = plugin.getConfigManager().getVelocityNotifyUrl();
+            if (velocityUrl == null || velocityUrl.isBlank()) return; // Velocity chưa config
+
+            String secret = plugin.getConfigManager().getBackendSecret();
+            String body   = "{\"uuid\":\"" + uuid + "\"}";
+
+            try {
+                java.net.URL url = java.net.URI.create(velocityUrl).toURL();
+                java.net.HttpURLConnection conn =
+                        (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Authorization", "Bearer " + secret);
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(3000);
+                conn.setDoOutput(true);
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+                int status = conn.getResponseCode();
+                conn.disconnect();
+                if (status != 200) {
+                    plugin.getLogger().warning(
+                            "[SecureAuth] Velocity notify returned HTTP " + status);
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning(
+                        "[SecureAuth] Failed to notify Velocity: " + e.getMessage());
+            }
+        });
     }
-}
 
     private void asyncUpdateLastLogin(String uuid) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin,
@@ -240,8 +236,16 @@ private void restorePreLoginLocation(Player player) {
     private void asyncLog(Player player, String eventType, String detail) {
         String uuid = player.getUniqueId().toString();
         String name = player.getName();
-        final String ip = safeIp(player);
-        plugin.getLogger().warning("[SecureAuth][" + eventType + "] " + name + " (" + ip + "): " + detail);
+        String ip = safeIp(player);
+
+        boolean isError = eventType.contains("FAIL") || eventType.contains("BLOCK")
+                || eventType.contains("INVALID") || eventType.contains("EXPIRED")
+                || eventType.contains("DENIED");
+        if (isError) {
+            plugin.getLogger().warning("[SecureAuth][" + eventType + "] " + name + " (" + ip + "): " + detail);
+        } else {
+            plugin.getLogger().info("[SecureAuth][" + eventType + "] " + name + " (" + ip + "): " + detail);
+        }
 
         Runnable task = () -> plugin.getDatabaseManager().logEvent(uuid, name, ip, eventType, detail);
         if (plugin.getServer().isPrimaryThread()) {
