@@ -1,0 +1,23 @@
+# Maven build output
+target/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Compiled classes
+*.class
+
+# JAR files (build lại từ source)
+*.jar
+
+# Sensitive config
+config.yml
+.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
