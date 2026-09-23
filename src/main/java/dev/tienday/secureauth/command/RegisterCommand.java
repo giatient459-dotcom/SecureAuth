@@ -74,6 +74,26 @@ public class RegisterCommand implements CommandExecutor {
                     return;
                 }
 
+                // Kiểm tra giới hạn account theo IP
+                int maxPerIp = plugin.getConfigManager().getMaxAccountsPerIp();
+                if (maxPerIp > 0) {
+                    String ip = safeIp(player);
+                    int count = plugin.getDatabaseManager().countAccountsByIp(ip);
+                    if (count >= maxPerIp) {
+                        plugin.getDatabaseManager().logEvent(uuid, username, ip,
+                                "REGISTER_IP_LIMIT", "IP limit reached: " + count + "/" + maxPerIp);
+                        plugin.getAuditLogger().log("REGISTER_IP_LIMIT", username, uuid, ip,
+                                "IP already has " + count + " accounts");
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (player.isOnline()) player.sendMessage(
+                                    net.kyori.adventure.text.Component.text(
+                                            "§cIP của bạn đã đạt giới hạn số tài khoản (" + maxPerIp + ").",
+                                            net.kyori.adventure.text.format.NamedTextColor.RED));
+                        });
+                        return;
+                    }
+                }
+
                 String hash = PasswordUtil.hash(password);
                 boolean inserted = plugin.getDatabaseManager().registerPlayer(uuid, username, hash);
 
