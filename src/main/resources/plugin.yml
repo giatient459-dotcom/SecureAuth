@@ -18,6 +18,11 @@ commands:
   link:
     description: Link your Discord account (use code from bot DM)
     usage: /link <code>
+  changepassword:
+    description: Change your password
+    usage: /changepassword <old> <new> <confirm>
+    aliases: [cp, passwd]
+
   uuid:
     description: Show your Minecraft UUID
     usage: /uuid
