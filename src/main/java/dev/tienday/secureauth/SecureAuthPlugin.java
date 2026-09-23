@@ -4,6 +4,7 @@ import dev.tienday.secureauth.command.AuthAdminCommand;
 import dev.tienday.secureauth.command.LinkCommand;
 import dev.tienday.secureauth.command.LoginCommand;
 import dev.tienday.secureauth.command.RegisterCommand;
+import dev.tienday.secureauth.command.ChangePasswordCommand;
 import dev.tienday.secureauth.command.SetSpawnCommand;
 import dev.tienday.secureauth.command.UUIDCommand;
 import dev.tienday.secureauth.database.DatabaseManager;
@@ -66,7 +67,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
         registerCommand("link",         new LinkCommand(this));
         registerCommand("authadmin",    new AuthAdminCommand(this));
         registerCommand("authsetspawn", new SetSpawnCommand(this));
-        registerCommand("uuid",         new UUIDCommand());
+        registerCommand("uuid",            new UUIDCommand());
+        registerCommand("changepassword",   new ChangePasswordCommand(this));
 
         // Order: AuthListener first (blocks unauthed), then guards
         getServer().getPluginManager().registerEvents(new AuthListener(this), this);
