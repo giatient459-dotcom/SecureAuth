@@ -318,6 +318,22 @@ public class DatabaseManager {
         return Optional.empty();
     }
 
+    // ── IP limit ──────────────────────────────────────────────────────────────
+
+    public int countAccountsByIp(String ip) {
+        final String sql = "SELECT COUNT(*) FROM sa_security_log " +
+                "WHERE ip_address = ? AND event_type = 'REGISTER_SUCCESS'";
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            ps.setString(1, ip);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "countAccountsByIp error", e);
+        }
+        return 0;
+    }
+
     // ── Security Log ──────────────────────────────────────────────────────────
 
     public void logEvent(String uuid, String username, String ip, String eventType, String detail) {
