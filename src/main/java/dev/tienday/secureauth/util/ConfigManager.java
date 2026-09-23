@@ -56,6 +56,10 @@ public class ConfigManager {
     public int getSessionTimeout() {
         return Math.max(30, plugin.getConfig().getInt("security.session-timeout", 300));
     }
+
+    public int getMaxAccountsPerIp() {
+        return plugin.getConfig().getInt("security.max-accounts-per-ip", 3);
+    }
     public int getMaxLoginAttempts() {
         return Math.max(1, plugin.getConfig().getInt("security.max-login-attempts", 5));
     }
