@@ -114,8 +114,4 @@ velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   # Phải giống backend-secret trong config Velocity
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
-
-velocity:
-  # Để trống nếu không dùng Velocity proxy
-  notify-url: ""
-  backend-secret: ""
+  # End
