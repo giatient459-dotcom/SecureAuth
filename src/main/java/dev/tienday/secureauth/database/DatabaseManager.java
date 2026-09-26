@@ -91,6 +91,13 @@ public class DatabaseManager {
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_log_uuid ON sa_security_log(uuid)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_log_time ON sa_security_log(occurred_at)");
         }
+        // Safe migrations for existing DBs
+        try (Statement st = connection.createStatement()) {
+            try { st.executeUpdate("ALTER TABLE sa_players ADD COLUMN register_ip TEXT DEFAULT NULL"); }
+            catch (SQLException ignored) {}
+            try { st.executeUpdate("ALTER TABLE sa_players ADD COLUMN last_login_ip TEXT DEFAULT NULL"); }
+            catch (SQLException ignored) {}
+        }
     }
 
     // ── Reconnect guard ───────────────────────────────────────────────────────
@@ -137,16 +144,21 @@ public class DatabaseManager {
     }
 
     public boolean registerPlayer(String uuid, String username, String passwordHash) {
+        return registerPlayer(uuid, username, passwordHash, null);
+    }
+
+    public boolean registerPlayer(String uuid, String username, String passwordHash, String ip) {
         final String sql = """
             INSERT OR IGNORE INTO sa_players
-                (uuid, username, password_hash, registered_at)
-            VALUES (?, ?, ?, ?)
-        """;
+                (uuid, username, password_hash, registered_at, register_ip)
+            VALUES (?, ?, ?, ?, ?)
+            """;
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             ps.setString(1, uuid);
             ps.setString(2, username);
             ps.setString(3, passwordHash);
             ps.setLong(4, System.currentTimeMillis());
+            ps.setString(5, ip);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "registerPlayer error", e);
@@ -173,6 +185,18 @@ public class DatabaseManager {
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "resetPassword error", e);
+        }
+    }
+
+    /** Player /changepassword — keep Discord link and 2FA flag. */
+    public void resetPasswordKeepLink(String uuid, String newHash) {
+        final String sql = "UPDATE sa_players SET password_hash = ? WHERE uuid = ?";
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            ps.setString(1, newHash);
+            ps.setString(2, uuid);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "resetPasswordKeepLink error", e);
         }
     }
 
@@ -321,8 +345,8 @@ public class DatabaseManager {
     // ── IP limit ──────────────────────────────────────────────────────────────
 
     public int countAccountsByIp(String ip) {
-        final String sql = "SELECT COUNT(*) FROM sa_security_log " +
-                "WHERE ip_address = ? AND event_type = 'REGISTER_SUCCESS'";
+        if (ip == null || ip.isBlank() || "unknown".equals(ip)) return 0;
+        final String sql = "SELECT COUNT(*) FROM sa_players WHERE register_ip = ? AND disabled = 0";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             ps.setString(1, ip);
             try (ResultSet rs = ps.executeQuery()) {
@@ -357,14 +381,33 @@ public class DatabaseManager {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private PlayerData mapRow(ResultSet rs) throws SQLException {
+        String discord = rs.getString("discord_id");
+        if (rs.wasNull()) discord = null;
+        String lastIp = null;
+        String regIp = null;
+        try {
+            lastIp = rs.getString("last_login_ip");
+            if (rs.wasNull()) lastIp = null;
+        } catch (SQLException ignored) {}
+        try {
+            regIp = rs.getString("register_ip");
+            if (rs.wasNull()) regIp = null;
+        } catch (SQLException ignored) {}
+        boolean disabled = false;
+        try {
+            disabled = rs.getInt("disabled") == 1;
+        } catch (SQLException ignored) {}
         return new PlayerData(
                 rs.getString("uuid"),
                 rs.getString("username"),
                 rs.getString("password_hash"),
-                rs.getString("discord_id"),
+                discord,
                 rs.getInt("two_fa_enabled") == 1,
                 rs.getLong("registered_at"),
-                rs.getLong("last_login_at")
+                rs.getLong("last_login_at"),
+                disabled,
+                lastIp,
+                regIp
         );
     }
 
