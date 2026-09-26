@@ -7,23 +7,20 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Thread-safe rate limiter with two mechanisms:
- *  1. Failure counter + lockout (for /login).
- *  2. Sliding-window token bucket (for /register, /link).
+ * Thread-safe rate limiter:
+ *  1. Failure counter + lockout (/login).
+ *  2. Fixed-window token bucket (/register, /link, /changepassword).
+ *
+ * Quit: clearPlayerEphemeral(uuid) — does NOT clear login lockout.
  */
 public class RateLimiter {
 
-    private record AttemptRecord(int count, long lockedUntil) { }
-
-    private static final class TokenBucket {
-        long windowStart;
-        int count;
-    }
+    private record AttemptRecord(int count, long lockedUntil, long lastUpdate) {}
+    private record TokenWindow(long windowStart, int count) {}
 
     private final SecureAuthPlugin plugin;
     private final Map<String, AttemptRecord> attempts = new ConcurrentHashMap<>();
-    private final Map<String, TokenBucket> tokens = new ConcurrentHashMap<>();
-
+    private final Map<String, TokenWindow> tokens = new ConcurrentHashMap<>();
     private BukkitTask cleanupTask;
 
     public RateLimiter(SecureAuthPlugin plugin) {
@@ -44,15 +41,15 @@ public class RateLimiter {
         tokens.clear();
     }
 
-    // ---- Failure counter (login) ----
-
     public boolean isLocked(String key) {
         if (key == null) return false;
         AttemptRecord r = attempts.get(key);
         if (r == null) return false;
         long now = System.currentTimeMillis();
         if (r.lockedUntil() > 0 && now < r.lockedUntil()) return true;
-        if (r.lockedUntil() > 0) attempts.remove(key, r);
+        if (r.lockedUntil() > 0 && now >= r.lockedUntil()) {
+            attempts.remove(key, r);
+        }
         return false;
     }
 
@@ -60,24 +57,28 @@ public class RateLimiter {
         if (key == null) return 0;
         AttemptRecord r = attempts.get(key);
         if (r == null || r.lockedUntil() <= 0) return 0;
-        long remaining = (r.lockedUntil() - System.currentTimeMillis()) / 1000L;
-        return Math.max(0, remaining);
+        return Math.max(0, (r.lockedUntil() - System.currentTimeMillis()) / 1000L);
     }
 
+    /** @return true if this failure triggered lockout */
     public boolean recordFailure(String key) {
         if (key == null) return false;
         int maxAttempts = plugin.getConfigManager().getMaxLoginAttempts();
-        int lockoutSec  = plugin.getConfigManager().getLockoutDuration();
+        int lockoutSec = plugin.getConfigManager().getLockoutDuration();
         long now = System.currentTimeMillis();
 
         AttemptRecord updated = attempts.compute(key, (k, v) -> {
-            int current = (v == null) ? 0 : v.count();
-            if (v != null && v.lockedUntil() > 0 && now >= v.lockedUntil()) current = 0;
+            int current = 0;
+            if (v != null) {
+                if (v.lockedUntil() > 0 && now < v.lockedUntil()) return v;
+                if (v.lockedUntil() > 0 && now >= v.lockedUntil()) current = 0;
+                else current = v.count();
+            }
             int newCount = current + 1;
             if (newCount >= maxAttempts) {
-                return new AttemptRecord(newCount, now + lockoutSec * 1000L);
+                return new AttemptRecord(newCount, now + lockoutSec * 1000L, now);
             }
-            return new AttemptRecord(newCount, 0);
+            return new AttemptRecord(newCount, 0L, now);
         });
         return updated.lockedUntil() > now;
     }
@@ -95,37 +96,47 @@ public class RateLimiter {
         return r.count();
     }
 
-    // ---- Token bucket (register / link) ----
-
     public boolean tryAcquireToken(String key, int maxPerWindow, long windowMs) {
-        if (key == null || maxPerWindow <= 0 || windowMs <= 0) return true;
+        if (key == null) return false;
+        if (maxPerWindow <= 0 || windowMs <= 0) return true;
         long now = System.currentTimeMillis();
-
-        TokenBucket bucket = tokens.compute(key, (k, b) -> {
-            if (b == null || (now - b.windowStart) >= windowMs) {
-                TokenBucket nb = new TokenBucket();
-                nb.windowStart = now;
-                nb.count = 1;
-                return nb;
+        final boolean[] allowed = {false};
+        tokens.compute(key, (k, old) -> {
+            if (old == null || (now - old.windowStart()) >= windowMs) {
+                allowed[0] = true;
+                return new TokenWindow(now, 1);
             }
-            b.count++;
-            return b;
+            if (old.count() >= maxPerWindow) {
+                allowed[0] = false;
+                return old;
+            }
+            allowed[0] = true;
+            return new TokenWindow(old.windowStart(), old.count() + 1);
         });
-        return bucket.count <= maxPerWindow;
+        return allowed[0];
     }
 
     public void clearTokens(String key) {
         if (key != null) tokens.remove(key);
     }
 
-    // ---- Cleanup ----
+    /** Session quit: clear token buckets only — keep login lockout. */
+    public void clearPlayerEphemeral(String uuid) {
+        if (uuid == null || uuid.isBlank()) return;
+        tokens.remove("register:" + uuid);
+        tokens.remove("link:" + uuid);
+        tokens.remove("cpw:" + uuid);
+    }
 
     private void cleanupExpired() {
         long now = System.currentTimeMillis();
+        long staleAttemptMs = 60 * 60_000L;
+        long staleTokenMs = 30 * 60_000L;
         attempts.entrySet().removeIf(e -> {
             AttemptRecord r = e.getValue();
-            return r.lockedUntil() > 0 && now >= r.lockedUntil();
+            if (r.lockedUntil() > 0) return now >= r.lockedUntil();
+            return (now - r.lastUpdate()) >= staleAttemptMs;
         });
-        tokens.entrySet().removeIf(e -> (now - e.getValue().windowStart) > 30 * 60_000L);
+        tokens.entrySet().removeIf(e -> (now - e.getValue().windowStart()) >= staleTokenMs);
     }
 }
