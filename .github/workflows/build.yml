@@ -2,11 +2,12 @@ name: Build
 
 on:
   push:
-    branches: [TienDay, main]
+    branches: [monorepo, TienDay, main]
   pull_request:
-    branches: [TienDay, main]
+    branches: [monorepo, TienDay, main]
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   build:
