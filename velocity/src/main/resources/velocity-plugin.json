@@ -1,0 +1,8 @@
+{
+  "id": "secureauth-velocity",
+  "name": "SecureAuthVelocity",
+  "version": "1.0.1",
+  "description": "Velocity companion for SecureAuth — blocks unauthenticated players at proxy",
+  "authors": ["TienDay"],
+  "dependencies": []
+}
