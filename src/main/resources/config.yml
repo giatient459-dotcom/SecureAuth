@@ -36,6 +36,8 @@ messages:
   already-registered: "&cTên này đã được đăng ký."
   password-mismatch: "&cHai mật khẩu không khớp."
   password-too-short: "&cMật khẩu phải có ít nhất 8 ký tự."
+  # /changepassword (thêm cho fix pack)
+  password-changed: "&aĐổi mật khẩu thành công!"
   too-many-attempts: "&cQuá nhiều lần thử. Thử lại sau {seconds} giây."
   session-expired: "&cPhiên đăng nhập hết hạn. Vui lòng đăng nhập lại."
   two-fa-required: "&eMã 2FA đã được gửi qua Discord DM. Dùng /login <mã>."
@@ -51,6 +53,8 @@ messages:
   kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
   register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
+  # Giới hạn đăng ký theo IP (thêm cho fix pack)
+  register-ip-limit: "&cIP này đã đạt giới hạn số tài khoản đăng ký."
 
 op-guard:
   block-op-commands: true
@@ -114,4 +118,3 @@ velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   # Phải giống backend-secret trong config Velocity
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
-  # End
