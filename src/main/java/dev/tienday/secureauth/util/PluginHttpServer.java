@@ -157,8 +157,28 @@ public final class PluginHttpServer {
         boolean online = false;
         try {
             UUID uuid = UUID.fromString(data.getUuid());
-            Player p = Bukkit.getPlayer(uuid);
-            online = p != null && p.isOnline();
+            // Player lookup must not run off the main thread
+            if (Bukkit.isPrimaryThread()) {
+                Player p = Bukkit.getPlayer(uuid);
+                online = p != null && p.isOnline();
+            } else {
+                final boolean[] holder = {false};
+                final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    try {
+                        Player p = Bukkit.getPlayer(uuid);
+                        holder[0] = p != null && p.isOnline();
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+                try {
+                    latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                online = holder[0];
+            }
         } catch (IllegalArgumentException ignored) {}
 
         String json = String.format(
