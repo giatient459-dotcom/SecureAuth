@@ -22,12 +22,20 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerCommandSendEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 public class AuthListener implements Listener {
+
+    private static final Set<String> ALLOWED_COMMANDS = Set.of(
+            "login", "l", "register", "reg", "link",
+            "changepassword", "changepass", "cpw", "uuid"
+    );
 
     private final SecureAuthPlugin plugin;
 
@@ -115,8 +123,23 @@ public class AuthListener implements Listener {
         UUID uuid = event.getPlayer().getUniqueId();
         plugin.getSessionManager().invalidate(uuid);
         plugin.getTwoFactorManager().clearCode(uuid);
-        // Rate-limit failures intentionally NOT cleared on quit — otherwise a
-        // player could reset their lockout by reconnecting.
+        // Token buckets only — login lockout intentionally kept
+        plugin.getRateLimiter().clearPlayerEphemeral(uuid.toString());
+    }
+
+    /** Hide tab-complete for unauthenticated players except auth commands. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onCommandSend(PlayerCommandSendEvent event) {
+        if (plugin.getSessionManager().isAuthenticated(event.getPlayer().getUniqueId())) {
+            return;
+        }
+        event.getCommands().removeIf(cmd -> {
+            if (cmd == null) return true;
+            String c = cmd.toLowerCase(java.util.Locale.ROOT);
+            int colon = c.indexOf(':');
+            if (colon >= 0 && colon + 1 < c.length()) c = c.substring(colon + 1);
+            return !ALLOWED_COMMANDS.contains(c);
+        });
     }
 
     // ---- Vanish ----
@@ -181,25 +204,27 @@ public class AuthListener implements Listener {
             return;
         }
 
-        String raw = event.getMessage().trim().toLowerCase();
-        while (raw.startsWith("/")) raw = raw.substring(1);
-        if (raw.isEmpty()) {
-            event.setCancelled(true);
-            return;
-        }
-        String firstToken = raw.split("\\s+")[0];
-        int colon = firstToken.indexOf(':');
-        String cmd = (colon >= 0) ? firstToken.substring(colon + 1) : firstToken;
-
-        if (cmd.equals("login")    || cmd.equals("l")
-                || cmd.equals("register") || cmd.equals("reg")
-                || cmd.equals("link")
-                || cmd.equals("uuid")) {
+        String cmd = normalizeCommand(event.getMessage());
+        if (cmd != null && ALLOWED_COMMANDS.contains(cmd)) {
             return;
         }
 
         event.setCancelled(true);
         player.sendMessage(plugin.getConfigManager().getMessage("not-logged-in"));
+    }
+
+    /** Strip leading /, namespace (minecraft:op → op), Locale.ROOT lower-case. */
+    static String normalizeCommand(String message) {
+        if (message == null) return null;
+        String raw = message.trim().toLowerCase(Locale.ROOT);
+        while (raw.startsWith("/")) raw = raw.substring(1);
+        if (raw.isEmpty()) return null;
+        String first = raw.split("\s+")[0];
+        int colon = first.indexOf(':');
+        if (colon >= 0 && colon + 1 < first.length()) {
+            first = first.substring(colon + 1);
+        }
+        return first;
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
