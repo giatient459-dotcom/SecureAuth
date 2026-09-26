@@ -60,8 +60,10 @@ public class RegisterCommand implements CommandExecutor {
             return true;
         }
 
-        String uuid     = playerUuid.toString();
-        String username = player.getName();
+        final String uuid     = playerUuid.toString();
+        final String username = player.getName();
+        final String ip       = safeIp(player);
+        final int maxPerIp    = plugin.getConfigManager().getMaxAccountsPerIp();
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -74,32 +76,24 @@ public class RegisterCommand implements CommandExecutor {
                     return;
                 }
 
-                // Kiểm tra giới hạn account theo IP
-                int maxPerIp = plugin.getConfigManager().getMaxAccountsPerIp();
-                if (maxPerIp > 0) {
-                    String ip = safeIp(player);
-                    int count = plugin.getDatabaseManager().countAccountsByIp(ip);
-                    if (count >= maxPerIp) {
-                        plugin.getDatabaseManager().logEvent(uuid, username, ip,
-                                "REGISTER_IP_LIMIT", "IP limit reached: " + count + "/" + maxPerIp);
-                        plugin.getAuditLogger().log("REGISTER_IP_LIMIT", username, uuid, ip,
-                                "IP already has " + count + " accounts");
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            if (player.isOnline()) player.sendMessage(
-                                    net.kyori.adventure.text.Component.text(
-                                            "§cIP của bạn đã đạt giới hạn số tài khoản (" + maxPerIp + ").",
-                                            net.kyori.adventure.text.format.NamedTextColor.RED));
-                        });
-                        return;
-                    }
+                if (maxPerIp > 0 && plugin.getDatabaseManager().countAccountsByIp(ip) >= maxPerIp) {
+                    plugin.getDatabaseManager().logEvent(uuid, username, ip,
+                            "REGISTER_IP_LIMIT", "IP limit reached");
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            player.sendMessage(plugin.getConfigManager().getMessage("register-ip-limit"));
+                        }
+                    });
+                    return;
                 }
 
                 String hash = PasswordUtil.hash(password);
-                boolean inserted = plugin.getDatabaseManager().registerPlayer(uuid, username, hash);
+                boolean inserted = plugin.getDatabaseManager()
+                        .registerPlayer(uuid, username, hash, ip);
 
                 if (inserted) {
                     plugin.getLogger().info("[SecureAuth] New registration: " + username);
-                    plugin.getDatabaseManager().logEvent(uuid, username, safeIp(player),
+                    plugin.getDatabaseManager().logEvent(uuid, username, ip,
                             "REGISTER_SUCCESS", "New account created");
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (player.isOnline()) {
