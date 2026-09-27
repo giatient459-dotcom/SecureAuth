@@ -48,9 +48,20 @@ public class ChangePasswordCommand implements CommandExecutor {
         String newPass = args[1];
         String confirm = args[2];
 
-        if (newPass.length() < MIN_LEN || newPass.length() > MAX_LEN) {
+        if (newPass.length() < plugin.getConfigManager().getPasswordMinLength() || newPass.length() > MAX_LEN) {
             player.sendMessage(plugin.getConfigManager().getMessage("password-too-short"));
             return true;
+
+        if (plugin.getConfigManager().isPasswordRequireMixed()) {
+            boolean hasLetter = newPass.chars().anyMatch(Character::isLetter);
+            boolean hasDigit  = newPass.chars().anyMatch(Character::isDigit);
+            if (!hasLetter || !hasDigit) {
+                player.sendMessage(plugin.getConfigManager().getMessage("password-weak")
+                        .replaceText(b -> b.matchLiteral("{min}")
+                                .replacement(String.valueOf(plugin.getConfigManager().getPasswordMinLength()))));
+                return true;
+            }
+        }
         }
         if (!newPass.equals(confirm)) {
             player.sendMessage(plugin.getConfigManager().getMessage("password-mismatch"));
