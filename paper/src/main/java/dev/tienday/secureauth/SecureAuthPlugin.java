@@ -16,8 +16,11 @@ import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.AuditLogger;
 import dev.tienday.secureauth.util.ConfigManager;
+import dev.tienday.secureauth.util.BackupManager;
+import dev.tienday.secureauth.util.IpSessionStore;
 import dev.tienday.secureauth.util.PluginHttpServer;
 import dev.tienday.secureauth.util.SessionManager;
+import dev.tienday.secureauth.util.WebhookNotifier;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -35,6 +38,9 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private TwoFactorManager twoFactorManager;
     private AuditLogger auditLogger;
     private PluginHttpServer pluginHttpServer;
+    private WebhookNotifier webhookNotifier;
+    private BackupManager backupManager;
+    private IpSessionStore ipSessionStore;
 
     @Override
     public void onEnable() {
@@ -61,6 +67,9 @@ public final class SecureAuthPlugin extends JavaPlugin {
         sessionManager   = new SessionManager(this);
         rateLimiter      = new RateLimiter(this);
         twoFactorManager = new TwoFactorManager(this);
+        webhookNotifier  = new WebhookNotifier(this);
+        backupManager    = new BackupManager(this);
+        ipSessionStore   = new IpSessionStore(this);
 
         registerCommand("login",        new LoginCommand(this));
         registerCommand("register",     new RegisterCommand(this));
@@ -78,6 +87,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
         sessionManager.startTimeoutTask();
         rateLimiter.startCleanupTask();
+        backupManager.startScheduled();
 
         pluginHttpServer = new PluginHttpServer(this);
         pluginHttpServer.start();
@@ -100,6 +110,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
     public void onDisable() {
         if (sessionManager  != null) sessionManager.shutdown();
         if (rateLimiter     != null) rateLimiter.shutdown();
+        if (backupManager   != null) backupManager.shutdown();
+        if (ipSessionStore  != null) ipSessionStore.shutdown();
         if (pluginHttpServer != null) pluginHttpServer.stop();
         if (databaseManager != null) databaseManager.close();
         if (auditLogger     != null) {
@@ -117,4 +129,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
     public RateLimiter getRateLimiter()               { return rateLimiter; }
     public TwoFactorManager getTwoFactorManager()     { return twoFactorManager; }
     public AuditLogger getAuditLogger()               { return auditLogger; }
+    public WebhookNotifier getWebhookNotifier()       { return webhookNotifier; }
+    public BackupManager getBackupManager()           { return backupManager; }
+    public IpSessionStore getIpSessionStore()         { return ipSessionStore; }
 }
