@@ -17,6 +17,18 @@ security:
   argon2-iterations: 3
   argon2-memory-kb: 65536
   argon2-parallelism: 4
+  # Nhớ IP sau login thành công — bỏ qua 2FA trong X giờ nếu cùng IP
+  ip-session:
+    enabled: true
+    hours: 12
+  # Yêu cầu mật khẩu có chữ + số (bật nếu muốn chặt hơn)
+  password:
+    min-length: 8
+    require-mixed: false
+  # Captcha toán đơn giản khi /register (a+b=?)
+  register-captcha: false
+  # Grace period sau login (giây) — tránh kick/teleport race khi lag
+  login-grace-seconds: 3
 
 discord-bot:
   api-url: "http://127.0.0.1:8765"
@@ -55,6 +67,11 @@ messages:
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
   # Giới hạn đăng ký theo IP (thêm cho fix pack)
   register-ip-limit: "&cIP này đã đạt giới hạn số tài khoản đăng ký."
+  password-weak: "&cMật khẩu phải có ít nhất {min} ký tự, gồm chữ và số."
+  captcha-required: "&eCaptcha: {a} + {b} = ?  Dùng /register <pass> <confirm> <kết_quả>"
+  captcha-wrong: "&cSai captcha. Thử lại."
+  ip-session-skip-2fa: "&aNhận diện IP tin cậy — bỏ qua 2FA."
+  force-2fa-required: "&eTài khoản staff bắt buộc 2FA. Hãy /link Discord trước."
 
 op-guard:
   block-op-commands: true
@@ -118,3 +135,14 @@ velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   # Phải giống backend-secret trong config Velocity
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
+
+
+# Sao lưu SQLite tự động (0 = tắt lịch, vẫn dùng /authadmin backup)
+backup:
+  interval-hours: 24
+  keep-count: 7
+
+# Cảnh báo Discord webhook khi lockout / admin action
+alerts:
+  webhook-enabled: false
+  discord-webhook-url: ""
