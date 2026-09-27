@@ -16,7 +16,6 @@ import java.util.logging.Level;
 
 public class ChangePasswordCommand implements CommandExecutor {
 
-    private static final int MIN_LEN = 8;
     private static final int MAX_LEN = 128;
 
     private final SecureAuthPlugin plugin;
@@ -48,9 +47,11 @@ public class ChangePasswordCommand implements CommandExecutor {
         String newPass = args[1];
         String confirm = args[2];
 
-        if (newPass.length() < plugin.getConfigManager().getPasswordMinLength() || newPass.length() > MAX_LEN) {
+        int minLen = plugin.getConfigManager().getPasswordMinLength();
+        if (newPass.length() < minLen || newPass.length() > MAX_LEN) {
             player.sendMessage(plugin.getConfigManager().getMessage("password-too-short"));
             return true;
+        }
 
         if (plugin.getConfigManager().isPasswordRequireMixed()) {
             boolean hasLetter = newPass.chars().anyMatch(Character::isLetter);
@@ -58,23 +59,18 @@ public class ChangePasswordCommand implements CommandExecutor {
             if (!hasLetter || !hasDigit) {
                 player.sendMessage(plugin.getConfigManager().getMessage("password-weak")
                         .replaceText(b -> b.matchLiteral("{min}")
-                                .replacement(String.valueOf(plugin.getConfigManager().getPasswordMinLength()))));
+                                .replacement(String.valueOf(minLen))));
                 return true;
             }
         }
-        }
+
         if (!newPass.equals(confirm)) {
             player.sendMessage(plugin.getConfigManager().getMessage("password-mismatch"));
             return true;
         }
-        if (oldPass.equals(newPass)) {
-            player.sendMessage(Component.text(
-                    "New password must differ from the old one.", NamedTextColor.RED));
-            return true;
-        }
 
         String uuid = player.getUniqueId().toString();
-        if (!plugin.getRateLimiter().tryAcquireToken("cpw:" + uuid, 3, 60_000L)) {
+        if (!plugin.getRateLimiter().tryAcquireToken("changepass:" + uuid, 3, 60_000L)) {
             player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
                     .replaceText(b -> b.matchLiteral("{seconds}").replacement("60")));
             return true;
