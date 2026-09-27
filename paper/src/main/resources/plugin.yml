@@ -8,27 +8,27 @@ load: POSTWORLD
 
 commands:
   login:
-    description: Login to the server
-    usage: /login <password> [2fa_code]
+    description: Đăng nhập để vô server MeoDenMC
+    usage: /dn <mật khẩu> [2fa_code]
     aliases: [l]
   register:
-    description: Register an account
-    usage: /register <password> <confirm_password>
+    description: Đăng Ký Tài Khoản
+    usage: /dk <mật khẩu> <xác nhận mật khẩu>
     aliases: [reg]
   link:
-    description: Link your Discord account (use code from bot DM)
-    usage: /link <code>
+    description: Liên kết tài khoản (Dùng code từ bot 2FA)
+    usage: /liên kết <mã>
   changepassword:
-    description: Change your password
-    usage: /changepassword <old> <new> <confirm>
+    description: Đổi mật khẩu
+    usage: /changepassword <cũ> <mới> <xác nhận>
     aliases: [cp, passwd]
 
   uuid:
-    description: Show your Minecraft UUID
+    description: Hiện cái Minecraft UUID của bạn
     usage: /uuid
 
   authsetspawn:
-    description: Set the login spawn location to your current position
+    description: Để chỗ cho người dùng chưa login
     usage: /authsetspawn
     permission: secureauth.admin
 
