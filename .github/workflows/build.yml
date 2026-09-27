@@ -32,17 +32,14 @@ jobs:
           ls -la paper/target/*.jar || true
           ls -la velocity/target/*.jar || true
 
-          # Exact expected artifacts (exclude originals / sources)
           test -f "$PAPER_JAR" || { echo "::error::Missing $PAPER_JAR"; exit 1; }
           test -f "$VEL_JAR"   || { echo "::error::Missing $VEL_JAR"; exit 1; }
 
-          # Reject empty / tiny broken builds
           PAPER_SIZE=$(stat -c%s "$PAPER_JAR")
           VEL_SIZE=$(stat -c%s "$VEL_JAR")
           echo "Paper JAR size:   $PAPER_SIZE bytes"
           echo "Velocity JAR size: $VEL_SIZE bytes"
 
-          # Paper is shaded (bcprov + sqlite) → expect multi-MB; Velocity is thin API jar
           if [ "$PAPER_SIZE" -lt 500000 ]; then
             echo "::error::Paper JAR too small ($PAPER_SIZE) — shade may have failed"
             exit 1
@@ -64,12 +61,11 @@ jobs:
           jar tf "$PAPER_JAR" | grep -E 'org/bouncycastle/' \
             || { echo "::error::bouncycastle not shaded into Paper JAR"; exit 1; }
 
-          # plugin.yml main class check
           TMP=$(mktemp -d)
           unzip -p "$PAPER_JAR" plugin.yml > "$TMP/plugin.yml"
-          grep -q 'main: dev.tienday.secureauth.SecureAuthPlugin' "$TMP/plugin.yml" \
+          grep -qE 'main:[[:space:]]*dev\.tienday\.secureauth\.SecureAuthPlugin' "$TMP/plugin.yml" \
             || { echo "::error::plugin.yml main class incorrect"; cat "$TMP/plugin.yml"; exit 1; }
-          grep -q 'version:' "$TMP/plugin.yml" \
+          grep -qE 'version:' "$TMP/plugin.yml" \
             || { echo "::error::plugin.yml missing version"; exit 1; }
           echo "--- plugin.yml (head) ---"
           head -20 "$TMP/plugin.yml"
@@ -83,12 +79,23 @@ jobs:
             || { echo "::error::AuthNotifyServer.class missing"; exit 1; }
 
           unzip -p "$VEL_JAR" velocity-plugin.json > "$TMP/velocity-plugin.json"
-          grep -q '"id": "secureauth-velocity"' "$TMP/velocity-plugin.json" \
-            || { echo "::error::velocity-plugin.json id incorrect"; cat "$TMP/velocity-plugin.json"; exit 1; }
-          grep -q '"version": "1.0.2"' "$TMP/velocity-plugin.json" \
-            || { echo "::error::velocity-plugin.json version not 1.0.2"; cat "$TMP/velocity-plugin.json"; exit 1; }
           echo "--- velocity-plugin.json ---"
           cat "$TMP/velocity-plugin.json"
+          echo
+
+          # JSON may be minified (no spaces) — match flexibly
+          if ! grep -qE '"id"[[:space:]]*:[[:space:]]*"secureauth-velocity"' "$TMP/velocity-plugin.json"; then
+            echo "::error::velocity-plugin.json id incorrect"
+            exit 1
+          fi
+          if ! grep -qE '"version"[[:space:]]*:[[:space:]]*"1\.0\.2"' "$TMP/velocity-plugin.json"; then
+            echo "::error::velocity-plugin.json version not 1.0.2"
+            exit 1
+          fi
+          if ! grep -qE '"main"[[:space:]]*:[[:space:]]*"dev\.tienday\.secureauth\.velocity\.SecureAuthVelocity"' "$TMP/velocity-plugin.json"; then
+            echo "::error::velocity-plugin.json main class incorrect"
+            exit 1
+          fi
 
           echo "== RESULT: both JARs OK =="
           echo "PAPER=$PAPER_JAR ($PAPER_SIZE bytes)"
