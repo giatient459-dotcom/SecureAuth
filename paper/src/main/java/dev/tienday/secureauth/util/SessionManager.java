@@ -19,6 +19,7 @@ public class SessionManager {
     private final Map<UUID, Long> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Location> preLoginLocations = new ConcurrentHashMap<>();
     private final Set<UUID> awaitingTwoFa = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, Long> graceUntil = new ConcurrentHashMap<>();
 
     private BukkitTask timeoutTask;
 
@@ -61,6 +62,10 @@ public class SessionManager {
     public void authenticate(UUID uuid) {
         sessions.put(uuid, System.currentTimeMillis());
         awaitingTwoFa.remove(uuid);
+        int grace = plugin.getConfigManager().getLoginGraceSeconds();
+        if (grace > 0) {
+            graceUntil.put(uuid, System.currentTimeMillis() + grace * 1000L);
+        }
     }
 
     public void setAwaitingTwoFa(UUID uuid) {
@@ -79,6 +84,17 @@ public class SessionManager {
         return sessions.containsKey(uuid);
     }
 
+    /** True for a few seconds after login — softens teleport/kick races. */
+    public boolean isInGrace(UUID uuid) {
+        Long until = graceUntil.get(uuid);
+        if (until == null) return false;
+        if (System.currentTimeMillis() > until) {
+            graceUntil.remove(uuid, until);
+            return false;
+        }
+        return true;
+    }
+
     public void touch(UUID uuid) {
         if (sessions.containsKey(uuid)) {
             sessions.put(uuid, System.currentTimeMillis());
@@ -89,6 +105,7 @@ public class SessionManager {
         sessions.remove(uuid);
         awaitingTwoFa.remove(uuid);
         preLoginLocations.remove(uuid);
+        graceUntil.remove(uuid);
     }
 
     /** Lưu vị trí thật trước khi tp đến End lobby */
@@ -126,5 +143,6 @@ public class SessionManager {
         sessions.clear();
         awaitingTwoFa.clear();
         preLoginLocations.clear();
+        graceUntil.clear();
     }
 }
