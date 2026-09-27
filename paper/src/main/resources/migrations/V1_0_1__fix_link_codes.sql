@@ -1,0 +1,15 @@
+-- =========================================================================
+-- SecureAuth migration notes
+-- =========================================================================
+-- Plugin runtime uses SQLite (plugins/SecureAuth/secureauth.db).
+-- Schema + indexes are created/migrated in DatabaseManager.createTables().
+--
+-- This file is kept for reference only (legacy MySQL era).
+-- Do NOT run it against the SQLite database.
+--
+-- Applied automatically on plugin start (SQLite):
+--   - sa_players / sa_link_codes / sa_security_log
+--   - columns: register_ip, last_login_ip
+--   - indexes: username, register_ip, log uuid/time
+--   - unique partial index: uk_players_discord (discord_id IS NOT NULL)
+-- =========================================================================
