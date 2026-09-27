@@ -4,6 +4,8 @@ import dev.tienday.secureauth.SecureAuthPlugin;
 
 import java.io.File;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
 
@@ -90,6 +92,8 @@ public class DatabaseManager {
 
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_log_uuid ON sa_security_log(uuid)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_log_time ON sa_security_log(occurred_at)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_players_username ON sa_players(username)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_players_register_ip ON sa_players(register_ip)");
         }
         // Safe migrations for existing DBs
         try (Statement st = connection.createStatement()) {
@@ -97,6 +101,13 @@ public class DatabaseManager {
             catch (SQLException ignored) {}
             try { st.executeUpdate("ALTER TABLE sa_players ADD COLUMN last_login_ip TEXT DEFAULT NULL"); }
             catch (SQLException ignored) {}
+            // UNIQUE discord_id — SQLite allows multiple NULLs (unlinked accounts OK)
+            try {
+                st.executeUpdate(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uk_players_discord ON sa_players(discord_id) " +
+                    "WHERE discord_id IS NOT NULL"
+                );
+            } catch (SQLException ignored) {}
         }
     }
 
@@ -130,6 +141,20 @@ public class DatabaseManager {
         return Optional.empty();
     }
 
+    /** Includes disabled accounts — for admin info / recovery. */
+    public Optional<PlayerData> getPlayerIncludingDisabled(String uuid) {
+        final String sql = "SELECT * FROM sa_players WHERE uuid = ? LIMIT 1";
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            ps.setString(1, uuid);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "getPlayerIncludingDisabled error", e);
+        }
+        return Optional.empty();
+    }
+
     public boolean isRegistered(String uuid) {
         final String sql = "SELECT 1 FROM sa_players WHERE uuid = ? AND disabled = 0 LIMIT 1";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
@@ -148,18 +173,39 @@ public class DatabaseManager {
     }
 
     public boolean registerPlayer(String uuid, String username, String passwordHash, String ip) {
-        final String sql = """
+        final String insertSql = """
             INSERT OR IGNORE INTO sa_players
-                (uuid, username, password_hash, registered_at, register_ip)
-            VALUES (?, ?, ?, ?, ?)
+                (uuid, username, password_hash, registered_at, register_ip, disabled,
+                 discord_id, two_fa_enabled, last_login_at)
+            VALUES (?, ?, ?, ?, ?, 0, NULL, 0, 0)
             """;
-        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
-            ps.setString(1, uuid);
-            ps.setString(2, username);
-            ps.setString(3, passwordHash);
-            ps.setLong(4, System.currentTimeMillis());
-            ps.setString(5, ip);
-            return ps.executeUpdate() > 0;
+        // If row exists but was soft-disabled (admin reset legacy), revive it
+        final String reviveSql = """
+            UPDATE sa_players SET
+                username = ?, password_hash = ?, registered_at = ?, register_ip = ?,
+                disabled = 0, discord_id = NULL, two_fa_enabled = 0, last_login_at = 0
+            WHERE uuid = ? AND disabled = 1
+            """;
+        try {
+            Connection conn = getConn();
+            synchronized (this) {
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setString(1, uuid);
+                    ps.setString(2, username);
+                    ps.setString(3, passwordHash);
+                    ps.setLong(4, System.currentTimeMillis());
+                    ps.setString(5, ip);
+                    if (ps.executeUpdate() > 0) return true;
+                }
+                try (PreparedStatement ps = conn.prepareStatement(reviveSql)) {
+                    ps.setString(1, username);
+                    ps.setString(2, passwordHash);
+                    ps.setLong(3, System.currentTimeMillis());
+                    ps.setString(4, ip);
+                    ps.setString(5, uuid);
+                    return ps.executeUpdate() > 0;
+                }
+            }
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "registerPlayer error", e);
         }
@@ -167,10 +213,23 @@ public class DatabaseManager {
     }
 
     public void updateLastLogin(String uuid) {
-        final String sql = "UPDATE sa_players SET last_login_at = ? WHERE uuid = ?";
+        updateLastLogin(uuid, null);
+    }
+
+    public void updateLastLogin(String uuid, String ip) {
+        final String sql = (ip != null && !ip.isBlank() && !"unknown".equals(ip))
+                ? "UPDATE sa_players SET last_login_at = ?, last_login_ip = ? WHERE uuid = ?"
+                : "UPDATE sa_players SET last_login_at = ? WHERE uuid = ?";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
-            ps.setLong(1, System.currentTimeMillis());
-            ps.setString(2, uuid);
+            long now = System.currentTimeMillis();
+            if (ip != null && !ip.isBlank() && !"unknown".equals(ip)) {
+                ps.setLong(1, now);
+                ps.setString(2, ip);
+                ps.setString(3, uuid);
+            } else {
+                ps.setLong(1, now);
+                ps.setString(2, uuid);
+            }
             ps.executeUpdate();
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "updateLastLogin error", e);
@@ -213,6 +272,39 @@ public class DatabaseManager {
     /** Alias used by AuthAdminCommand — marks account as disabled */
     public void disablePassword(String uuid) {
         disableAccount(uuid);
+    }
+
+    /**
+     * Hard-delete account so the same UUID can /register again.
+     * Preferred path for /authadmin reset.
+     */
+    public void deleteAccount(String uuid) {
+        final String delCodes = "DELETE FROM sa_link_codes WHERE uuid = ?";
+        final String delPlayer = "DELETE FROM sa_players WHERE uuid = ?";
+        try {
+            Connection conn = getConn();
+            synchronized (this) {
+                conn.setAutoCommit(false);
+                try {
+                    try (PreparedStatement ps = conn.prepareStatement(delCodes)) {
+                        ps.setString(1, uuid);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(delPlayer)) {
+                        ps.setString(1, uuid);
+                        ps.executeUpdate();
+                    }
+                    conn.commit();
+                } catch (SQLException e) {
+                    try { conn.rollback(); } catch (SQLException ignored) {}
+                    throw e;
+                } finally {
+                    try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "deleteAccount error", e);
+        }
     }
 
     /** Delete all pending link codes for a UUID (used on reset/resetfa) */
@@ -284,25 +376,32 @@ public class DatabaseManager {
     public void storeLinkCode(String code, String uuid, String discordId, long expiresAt) {
         final String del = "DELETE FROM sa_link_codes WHERE uuid = ?";
         final String ins = "INSERT OR REPLACE INTO sa_link_codes (code, uuid, discord_id, expires_at) VALUES (?, ?, ?, ?)";
-        try {
-            Connection conn = getConn();
-            conn.setAutoCommit(false);
-            try (PreparedStatement ps = conn.prepareStatement(del)) {
-                ps.setString(1, uuid);
-                ps.executeUpdate();
+        synchronized (this) {
+            try {
+                Connection conn = getConn();
+                conn.setAutoCommit(false);
+                try {
+                    try (PreparedStatement ps = conn.prepareStatement(del)) {
+                        ps.setString(1, uuid);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(ins)) {
+                        ps.setString(1, code);
+                        ps.setString(2, uuid);
+                        ps.setString(3, discordId);
+                        ps.setLong(4, expiresAt);
+                        ps.executeUpdate();
+                    }
+                    conn.commit();
+                } catch (SQLException e) {
+                    try { conn.rollback(); } catch (SQLException ignored) {}
+                    throw e;
+                } finally {
+                    try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "storeLinkCode error", e);
             }
-            try (PreparedStatement ps = conn.prepareStatement(ins)) {
-                ps.setString(1, code);
-                ps.setString(2, uuid);
-                ps.setString(3, discordId);
-                ps.setLong(4, expiresAt);
-                ps.executeUpdate();
-            }
-            conn.commit();
-            conn.setAutoCommit(true);
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "storeLinkCode error", e);
-            try { connection.rollback(); connection.setAutoCommit(true); } catch (SQLException ignored) {}
         }
     }
 
@@ -312,32 +411,39 @@ public class DatabaseManager {
     public Optional<LinkConsumeResult> consumeLinkCode(String code) {
         final String sel = "SELECT uuid, discord_id, expires_at FROM sa_link_codes WHERE code = ? LIMIT 1";
         final String del = "DELETE FROM sa_link_codes WHERE code = ?";
-        try {
-            Connection conn = getConn();
-            conn.setAutoCommit(false);
-            LinkConsumeResult result = null;
-            try (PreparedStatement ps = conn.prepareStatement(sel)) {
-                ps.setString(1, code);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next() && System.currentTimeMillis() <= rs.getLong("expires_at")) {
-                        result = new LinkConsumeResult(
-                                rs.getString("uuid"),
-                                rs.getString("discord_id")
-                        );
+        synchronized (this) {
+            try {
+                Connection conn = getConn();
+                conn.setAutoCommit(false);
+                LinkConsumeResult result = null;
+                try {
+                    try (PreparedStatement ps = conn.prepareStatement(sel)) {
+                        ps.setString(1, code);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next() && System.currentTimeMillis() <= rs.getLong("expires_at")) {
+                                result = new LinkConsumeResult(
+                                        rs.getString("uuid"),
+                                        rs.getString("discord_id")
+                                );
+                            }
+                        }
                     }
+                    // Always delete — prevent replay even if expired
+                    try (PreparedStatement ps = conn.prepareStatement(del)) {
+                        ps.setString(1, code);
+                        ps.executeUpdate();
+                    }
+                    conn.commit();
+                } catch (SQLException e) {
+                    try { conn.rollback(); } catch (SQLException ignored) {}
+                    throw e;
+                } finally {
+                    try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
+                return Optional.ofNullable(result);
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "consumeLinkCode error", e);
             }
-            // Always delete — prevent replay even if expired
-            try (PreparedStatement ps = conn.prepareStatement(del)) {
-                ps.setString(1, code);
-                ps.executeUpdate();
-            }
-            conn.commit();
-            conn.setAutoCommit(true);
-            return Optional.ofNullable(result);
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "consumeLinkCode error", e);
-            try { connection.rollback(); connection.setAutoCommit(true); } catch (SQLException ignored) {}
         }
         return Optional.empty();
     }
@@ -356,6 +462,81 @@ public class DatabaseManager {
             plugin.getLogger().log(Level.WARNING, "countAccountsByIp error", e);
         }
         return 0;
+    }
+
+    // ── Admin list / search ───────────────────────────────────────────────────
+
+    public List<PlayerData> listPlayers(int limit) {
+        List<PlayerData> out = new ArrayList<>();
+        int lim = Math.min(Math.max(limit, 1), 100);
+        final String sql = "SELECT * FROM sa_players ORDER BY registered_at DESC LIMIT ?";
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            ps.setInt(1, lim);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "listPlayers error", e);
+        }
+        return out;
+    }
+
+    public List<PlayerData> searchPlayers(String query) {
+        List<PlayerData> out = new ArrayList<>();
+        if (query == null || query.isBlank()) return out;
+        String q = query.trim();
+        final String sql = """
+            SELECT * FROM sa_players
+            WHERE LOWER(username) LIKE LOWER(?)
+               OR uuid LIKE ?
+               OR (discord_id IS NOT NULL AND discord_id LIKE ?)
+               OR (register_ip IS NOT NULL AND register_ip = ?)
+               OR (last_login_ip IS NOT NULL AND last_login_ip = ?)
+            LIMIT 50
+            """;
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            String like = "%" + q + "%";
+            ps.setString(1, like);
+            ps.setString(2, like);
+            ps.setString(3, like);
+            ps.setString(4, q);
+            ps.setString(5, q);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "searchPlayers error", e);
+        }
+        return out;
+    }
+
+    public List<String> getRecentLogs(String uuidOrNull, int limit) {
+        List<String> out = new ArrayList<>();
+        int lim = Math.min(Math.max(limit, 1), 50);
+        final String sql = uuidOrNull != null
+                ? "SELECT occurred_at, event_type, username, ip_address, detail FROM sa_security_log WHERE uuid = ? ORDER BY occurred_at DESC LIMIT ?"
+                : "SELECT occurred_at, event_type, username, ip_address, detail FROM sa_security_log ORDER BY occurred_at DESC LIMIT ?";
+        try (PreparedStatement ps = getConn().prepareStatement(sql)) {
+            if (uuidOrNull != null) {
+                ps.setString(1, uuidOrNull);
+                ps.setInt(2, lim);
+            } else {
+                ps.setInt(1, lim);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(String.format("[%d] %s | %s | %s | %s",
+                            rs.getLong("occurred_at"),
+                            rs.getString("event_type"),
+                            rs.getString("username"),
+                            rs.getString("ip_address"),
+                            rs.getString("detail")));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "getRecentLogs error", e);
+        }
+        return out;
     }
 
     // ── Security Log ──────────────────────────────────────────────────────────
