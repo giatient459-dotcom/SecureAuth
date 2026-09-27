@@ -127,7 +127,56 @@ public class ConfigManager {
     public String getBotApiSecret()  { return plugin.getConfig().getString("discord-bot.api-secret", ""); }
     public int    getBotApiTimeout() { return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000)); }
 
+    // ---- IP session (skip 2FA) ----
+
+    public boolean isIpSessionEnabled() {
+        return plugin.getConfig().getBoolean("security.ip-session.enabled", true);
+    }
+    public int getIpSessionHours() {
+        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
+    }
+
+    // ---- Password policy ----
+
+    public boolean isPasswordRequireMixed() {
+        return plugin.getConfig().getBoolean("security.password.require-mixed", false);
+    }
+    public int getPasswordMinLength() {
+        return Math.max(6, plugin.getConfig().getInt("security.password.min-length", 8));
+    }
+
+    // ---- Register captcha ----
+
+    public boolean isRegisterCaptchaEnabled() {
+        return plugin.getConfig().getBoolean("security.register-captcha", false);
+    }
+
+    // ---- Grace period after login (ms) ----
+
+    public int getLoginGraceSeconds() {
+        return Math.max(0, plugin.getConfig().getInt("security.login-grace-seconds", 3));
+    }
+
+    // ---- Backup ----
+
+    public int getBackupIntervalHours() {
+        return plugin.getConfig().getInt("backup.interval-hours", 24);
+    }
+    public int getBackupKeepCount() {
+        return Math.max(1, plugin.getConfig().getInt("backup.keep-count", 7));
+    }
+
+    // ---- Discord webhook alerts ----
+
+    public boolean isWebhookEnabled() {
+        return plugin.getConfig().getBoolean("alerts.webhook-enabled", false);
+    }
+    public String getWebhookUrl() {
+        return plugin.getConfig().getString("alerts.discord-webhook-url", "");
+    }
+
     // ---- Messages ----
+
 
     public Component getMessage(String key) {
         String prefix = plugin.getConfig().getString("messages.prefix", "&8[&bSecureAuth&8] ");
