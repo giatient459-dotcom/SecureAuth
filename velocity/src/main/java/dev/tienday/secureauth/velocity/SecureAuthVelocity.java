@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
 @Plugin(
         id = "secureauth-velocity",
         name = "SecureAuthVelocity",
-        version = "1.0.1",
+        version = "1.0.2",
         authors = {"TienDay"},
         description = "Velocity companion for SecureAuth"
 )
@@ -55,7 +55,7 @@ public final class SecureAuthVelocity {
                     .schedule();
         }
 
-        logger.info("SecureAuthVelocity 1.0.1 enabled — notify {}:{}",
+        logger.info("SecureAuthVelocity 1.0.2 enabled — notify {}:{}",
                 pluginConfig.getHttpBind(), pluginConfig.getHttpPort());
     }
 
