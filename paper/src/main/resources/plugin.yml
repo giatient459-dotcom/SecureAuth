@@ -34,13 +34,17 @@ commands:
 
   authadmin:
     description: Admin commands for SecureAuth
-    usage: /authadmin <reset|resetfa|info> <player>
+    usage: /authadmin <reset|resetfa|info|list|search|logs|backup> ...
     permission: secureauth.admin
     permission-message: "&cNo permission."
 
 permissions:
   secureauth.admin:
     description: Access to /authadmin commands
+    default: false
+
+  secureauth.force2fa:
+    description: Always require Discord 2FA (staff) — ignores IP session skip
     default: false
 
   secureauth.bypass:
