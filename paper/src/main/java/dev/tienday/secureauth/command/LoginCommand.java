@@ -64,8 +64,12 @@ public class LoginCommand implements CommandExecutor {
                     AuthListener.revealPlayer(plugin, player);
                     player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
                     plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in via 2FA");
-                    asyncUpdateLastLogin(uuid);
+                    asyncUpdateLastLogin(uuid, player);
                     asyncLog(player, "LOGIN_SUCCESS_2FA", "Logged in via Discord 2FA");
+                    if (plugin.getIpSessionStore() != null) {
+                        plugin.getIpSessionStore().remember(uuid, safeIp(player));
+                    }
+                    notifyVelocity(uuid);
                 }
                 case EXPIRED -> {
                     sessions.invalidate(playerUuid);
@@ -113,6 +117,10 @@ public class LoginCommand implements CommandExecutor {
                     boolean lockedOut = rateLimiter.recordFailure(uuid);
                     int cnt = rateLimiter.getFailureCount(uuid);
                     asyncLog(player, "LOGIN_FAIL", "Wrong password, attempt #" + cnt);
+                    if (lockedOut && plugin.getWebhookNotifier() != null) {
+                        plugin.getWebhookNotifier().alertLockout(
+                                player.getName(), uuid, safeIp(player), cnt);
+                    }
 
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
@@ -128,7 +136,23 @@ public class LoginCommand implements CommandExecutor {
 
                 rateLimiter.clearFailures(uuid);
 
+                final String currentIp = safeIp(player);
+                final boolean force2fa = player.hasPermission("secureauth.force2fa");
+                final boolean ipTrusted = !force2fa
+                        && plugin.getIpSessionStore() != null
+                        && plugin.getIpSessionStore().isTrusted(uuid, currentIp);
+
                 if (data.isTwoFaEnabled() && data.getDiscordId() != null) {
+                    if (ipTrusted) {
+                        // Skip 2FA — same IP within window
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline()) return;
+                            player.sendMessage(plugin.getConfigManager().getMessage("ip-session-skip-2fa"));
+                            finalizeLogin(player);
+                        });
+                        return;
+                    }
+
                     // If a valid code already exists, reuse it — no new DM.
                     if (twoFaManager.hasPendingCode(uuid)) {
                         sessions.setAwaitingTwoFa(playerUuid);
@@ -166,6 +190,16 @@ public class LoginCommand implements CommandExecutor {
                     return;
                 }
 
+                // Staff force2fa but not linked yet
+                if (force2fa && (data.getDiscordId() == null || data.getDiscordId().isBlank())) {
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            player.sendMessage(plugin.getConfigManager().getMessage("force-2fa-required"));
+                        }
+                    });
+                    return;
+                }
+
                 // No 2FA -> complete login.
                 plugin.getServer().getScheduler().runTask(plugin, () -> finalizeLogin(player));
             } catch (Throwable t) {
@@ -184,8 +218,11 @@ public class LoginCommand implements CommandExecutor {
         AuthListener.revealPlayer(plugin, player);
         player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
         plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in");
-        asyncUpdateLastLogin(uuid.toString());
+        asyncUpdateLastLogin(uuid.toString(), player);
         asyncLog(player, "LOGIN_SUCCESS", "Password login");
+        if (plugin.getIpSessionStore() != null) {
+            plugin.getIpSessionStore().remember(uuid.toString(), safeIp(player));
+        }
         // Báo Velocity biết player đã xác thực
         notifyVelocity(uuid.toString());
     }
@@ -229,8 +266,13 @@ public class LoginCommand implements CommandExecutor {
     }
 
     private void asyncUpdateLastLogin(String uuid) {
+        asyncUpdateLastLogin(uuid, null);
+    }
+
+    private void asyncUpdateLastLogin(String uuid, Player player) {
+        final String ip = player != null ? safeIp(player) : null;
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin,
-                () -> plugin.getDatabaseManager().updateLastLogin(uuid));
+                () -> plugin.getDatabaseManager().updateLastLogin(uuid, ip));
     }
 
     private void asyncLog(Player player, String eventType, String detail) {
