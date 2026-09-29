@@ -63,6 +63,7 @@ public class AuthAdminCommand implements CommandExecutor {
             }
             case "logs" -> handleLogs(sender, args);
             case "backup" -> handleBackup(sender);
+            case "reload" -> handleReload(sender);
             default -> sendUsage(sender);
         }
         return true;
@@ -70,7 +71,23 @@ public class AuthAdminCommand implements CommandExecutor {
 
     private void sendUsage(CommandSender sender) {
         sender.sendMessage(Component.text(
-                "Usage: /authadmin <reset|resetfa|info|list|search|logs|backup> ...", NamedTextColor.YELLOW));
+                "Usage: /secureauth reload  |  /authadmin <reset|resetfa|info|list|search|logs|backup|reload>",
+                NamedTextColor.YELLOW));
+    }
+
+    private void handleReload(CommandSender sender) {
+        try {
+            plugin.reloadConfig();
+            plugin.getConfigManager().validate();
+            sender.sendMessage(Component.text("SecureAuth config reloaded successfully.", NamedTextColor.GREEN));
+            plugin.getLogger().info("Config reloaded by " + sender.getName());
+            if (plugin.getAuditLogger() != null) {
+                plugin.getAuditLogger().logSystem("RELOAD", "Config reloaded by " + sender.getName());
+            }
+        } catch (Exception e) {
+            sender.sendMessage(Component.text("Reload failed: " + e.getMessage(), NamedTextColor.RED));
+            plugin.getLogger().log(Level.SEVERE, "Config reload failed", e);
+        }
     }
 
     @FunctionalInterface
