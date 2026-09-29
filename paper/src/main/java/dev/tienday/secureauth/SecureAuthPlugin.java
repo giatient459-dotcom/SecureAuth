@@ -71,13 +71,15 @@ public final class SecureAuthPlugin extends JavaPlugin {
         backupManager    = new BackupManager(this);
         ipSessionStore   = new IpSessionStore(this);
 
-        registerCommand("login",        new LoginCommand(this));
-        registerCommand("register",     new RegisterCommand(this));
-        registerCommand("link",         new LinkCommand(this));
-        registerCommand("authadmin",    new AuthAdminCommand(this));
-        registerCommand("authsetspawn", new SetSpawnCommand(this));
-        registerCommand("uuid",            new UUIDCommand(this));
-        registerCommand("changepassword",   new ChangePasswordCommand(this));
+        AuthAdminCommand adminCmd = new AuthAdminCommand(this);
+        registerCommand("login",          new LoginCommand(this));
+        registerCommand("register",       new RegisterCommand(this));
+        registerCommand("link",           new LinkCommand(this));
+        registerCommand("authadmin",      adminCmd);
+        registerCommand("secureauth",     adminCmd); // /secureauth reload
+        registerCommand("authsetspawn",   new SetSpawnCommand(this));
+        registerCommand("uuid",           new UUIDCommand(this));
+        registerCommand("changepassword", new ChangePasswordCommand(this));
 
         // Order: AuthListener first (blocks unauthed), then guards
         getServer().getPluginManager().registerEvents(new AuthListener(this), this);
