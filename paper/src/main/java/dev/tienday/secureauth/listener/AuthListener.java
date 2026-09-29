@@ -1,6 +1,7 @@
 package dev.tienday.secureauth.listener;
 
 import dev.tienday.secureauth.SecureAuthPlugin;
+import dev.tienday.secureauth.util.TitleUtil;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -85,7 +86,7 @@ public class AuthListener implements Listener {
             }
         }.runTaskLater(plugin, 5L); // 5 tick — đủ để client load xong
 
-        // Deferred: send the correct prompt after the client is loaded.
+        // Deferred: premium auto-login hoặc prompt login
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -94,9 +95,41 @@ public class AuthListener implements Listener {
 
                 plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
                     boolean registered = plugin.getDatabaseManager().isRegistered(uuid.toString());
+                    boolean premium = dev.tienday.secureauth.security.PremiumChecker.isPremium(player);
+                    boolean autoLogin = plugin.getConfigManager().isPremiumAutoLogin() && premium && registered;
+
+                    if (autoLogin) {
+                        var dataOpt = plugin.getDatabaseManager().getPlayer(uuid.toString());
+                        String currentIp = "unknown";
+                        try {
+                            if (player.getAddress() != null && player.getAddress().getAddress() != null) {
+                                currentIp = player.getAddress().getAddress().getHostAddress();
+                            }
+                        } catch (Exception ignored) {}
+                        final String ip = currentIp;
+                        boolean force2fa = player.hasPermission("secureauth.force2fa");
+                        boolean need2fa = force2fa
+                                || (plugin.getConfigManager().isPremiumRequire2fa()
+                                && dataOpt.isPresent()
+                                && dataOpt.get().isTwoFaEnabled()
+                                && dataOpt.get().getDiscordId() != null
+                                && (plugin.getIpSessionStore() == null
+                                || !plugin.getIpSessionStore().isTrusted(uuid.toString(), ip)));
+
+                        if (!need2fa) {
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                if (!player.isOnline() || plugin.getSessionManager().isAuthenticated(uuid)) return;
+                                new dev.tienday.secureauth.command.LoginCommand(plugin)
+                                        .completeLoginFromExternal(player, "premium");
+                            });
+                            return;
+                        }
+                    }
+
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
                         if (plugin.getSessionManager().isAuthenticated(uuid)) return;
+                        TitleUtil.loginPrompt(player, registered);
                         if (registered) {
                             player.sendMessage(plugin.getConfigManager().getMessage("not-logged-in"));
                         } else {
