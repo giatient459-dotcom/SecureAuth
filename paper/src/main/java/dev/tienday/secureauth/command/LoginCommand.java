@@ -4,9 +4,11 @@ import dev.tienday.secureauth.SecureAuthPlugin;
 import dev.tienday.secureauth.database.PlayerData;
 import dev.tienday.secureauth.listener.AuthListener;
 import dev.tienday.secureauth.security.PasswordUtil;
+import dev.tienday.secureauth.security.PremiumChecker;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
 import dev.tienday.secureauth.util.SessionManager;
+import dev.tienday.secureauth.util.TitleUtil;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -48,8 +50,14 @@ public class LoginCommand implements CommandExecutor {
             return true;
         }
 
-        // Case 1: awaiting 2FA code.
+        // Case 1: awaiting 2FA / IP confirm
         if (sessions.isAwaitingTwoFa(playerUuid)) {
+            // IP confirm buttons — không cần gõ mã
+            if (twoFaManager.hasPendingIpConfirm(uuid)) {
+                TitleUtil.ipConfirmPrompt(player);
+                player.sendMessage(plugin.getConfigManager().getMessage("ip-confirm-waiting"));
+                return true;
+            }
             if (args.length < 1) {
                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
                 return true;
@@ -62,6 +70,7 @@ public class LoginCommand implements CommandExecutor {
                     sessions.authenticate(playerUuid);
                     plugin.getSessionManager().restoreLocationAfterLogin(player);
                     AuthListener.revealPlayer(plugin, player);
+                    TitleUtil.loginSuccess(player);
                     player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
                     plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in via 2FA");
                     asyncUpdateLastLogin(uuid, player);
@@ -144,7 +153,6 @@ public class LoginCommand implements CommandExecutor {
 
                 if (data.isTwoFaEnabled() && data.getDiscordId() != null) {
                     if (ipTrusted) {
-                        // Skip 2FA — same IP within window
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
                             if (!player.isOnline()) return;
                             player.sendMessage(plugin.getConfigManager().getMessage("ip-session-skip-2fa"));
@@ -153,11 +161,51 @@ public class LoginCommand implements CommandExecutor {
                         return;
                     }
 
-                    // If a valid code already exists, reuse it — no new DM.
+                    // IP mới + confirm-buttons → Discord nút Xác nhận / Từ chối
+                    if (plugin.getConfigManager().isIpConfirmButtonsEnabled()) {
+                        if (twoFaManager.hasPendingIpConfirm(uuid)) {
+                            sessions.setAwaitingTwoFa(playerUuid);
+                            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                                if (!player.isOnline()) return;
+                                TitleUtil.ipConfirmPrompt(player);
+                                player.sendMessage(plugin.getConfigManager().getMessage("ip-confirm-waiting"));
+                            });
+                            return;
+                        }
+                        sessions.setAwaitingTwoFa(playerUuid);
+                        TwoFactorManager.SendResult sendResult = twoFaManager.sendIpConfirm(
+                                uuid, data.getDiscordId(), player.getName(), currentIp);
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (!player.isOnline()) return;
+                            switch (sendResult) {
+                                case SENT -> {
+                                    TitleUtil.ipConfirmPrompt(player);
+                                    player.sendMessage(plugin.getConfigManager().getMessage("ip-confirm-sent")
+                                            .replaceText(b -> b.matchLiteral("{ip}").replacement(currentIp)));
+                                }
+                                case COOLDOWN -> {
+                                    long secs = twoFaManager.getResendCooldownSeconds(uuid);
+                                    player.sendMessage(plugin.getConfigManager().getMessage("two-fa-cooldown")
+                                            .replaceText(b -> b.matchLiteral("{seconds}")
+                                                    .replacement(String.valueOf(secs))));
+                                }
+                                case FAILED -> {
+                                    sessions.invalidate(playerUuid);
+                                    asyncLog(player, "IP_CONFIRM_DM_FAILED", "Could not send IP confirm DM");
+                                    player.kick(plugin.getConfigManager()
+                                            .getMessageNoPrefix("kick-2fa-dm-failed"));
+                                }
+                            }
+                        });
+                        return;
+                    }
+
+                    // Fallback: mã 2FA gõ /login <code>
                     if (twoFaManager.hasPendingCode(uuid)) {
                         sessions.setAwaitingTwoFa(playerUuid);
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
                             if (player.isOnline()) {
+                                TitleUtil.twoFaPrompt(player);
                                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
                             }
                         });
@@ -171,8 +219,10 @@ public class LoginCommand implements CommandExecutor {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
                         switch (sendResult) {
-                            case SENT -> player.sendMessage(
-                                    plugin.getConfigManager().getMessage("two-fa-required"));
+                            case SENT -> {
+                                TitleUtil.twoFaPrompt(player);
+                                player.sendMessage(plugin.getConfigManager().getMessage("two-fa-required"));
+                            }
                             case COOLDOWN -> {
                                 long secs = twoFaManager.getResendCooldownSeconds(uuid);
                                 player.sendMessage(plugin.getConfigManager().getMessage("two-fa-cooldown")
@@ -216,6 +266,7 @@ public class LoginCommand implements CommandExecutor {
         plugin.getSessionManager().authenticate(uuid);
         plugin.getSessionManager().restoreLocationAfterLogin(player);
         AuthListener.revealPlayer(plugin, player);
+        TitleUtil.loginSuccess(player);
         player.sendMessage(plugin.getConfigManager().getMessage("login-success"));
         plugin.getLogger().info("[SecureAuth] " + player.getName() + " logged in");
         asyncUpdateLastLogin(uuid.toString(), player);
@@ -223,7 +274,31 @@ public class LoginCommand implements CommandExecutor {
         if (plugin.getIpSessionStore() != null) {
             plugin.getIpSessionStore().remember(uuid.toString(), safeIp(player));
         }
-        // Báo Velocity biết player đã xác thực
+        notifyVelocity(uuid.toString());
+    }
+
+    /**
+     * Premium auto-login hoặc sau khi Discord approve IP.
+     * Gọi từ main thread.
+     */
+    public void completeLoginFromExternal(Player player, String reason) {
+        if (!player.isOnline()) return;
+        UUID uuid = player.getUniqueId();
+        plugin.getSessionManager().authenticate(uuid);
+        plugin.getSessionManager().restoreLocationAfterLogin(player);
+        AuthListener.revealPlayer(plugin, player);
+        if ("premium".equals(reason)) {
+            TitleUtil.premiumAutoLogin(player);
+            player.sendMessage(plugin.getConfigManager().getMessage("premium-auto-login"));
+        } else {
+            TitleUtil.loginSuccess(player);
+            player.sendMessage(plugin.getConfigManager().getMessage("ip-confirm-approved"));
+        }
+        asyncUpdateLastLogin(uuid.toString(), player);
+        asyncLog(player, "LOGIN_SUCCESS", reason);
+        if (plugin.getIpSessionStore() != null) {
+            plugin.getIpSessionStore().remember(uuid.toString(), safeIp(player));
+        }
         notifyVelocity(uuid.toString());
     }
 
