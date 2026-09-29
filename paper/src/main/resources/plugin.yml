@@ -34,13 +34,20 @@ commands:
 
   authadmin:
     description: Admin commands for SecureAuth
-    usage: /authadmin <reset|resetfa|info|list|search|logs|backup> ...
+    usage: /authadmin <reset|resetfa|info|list|search|logs|backup|reload> ...
     permission: secureauth.admin
     permission-message: "&cNo permission."
 
+  secureauth:
+    description: SecureAuth main command (reload)
+    usage: /secureauth reload
+    permission: secureauth.admin
+    permission-message: "&cNo permission."
+    aliases: [sa]
+
 permissions:
   secureauth.admin:
-    description: Access to /authadmin commands
+    description: Access to /authadmin and /secureauth commands
     default: false
 
   secureauth.force2fa:
