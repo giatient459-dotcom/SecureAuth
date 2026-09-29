@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import dev.tienday.secureauth.SecureAuthPlugin;
 import dev.tienday.secureauth.database.PlayerData;
 import dev.tienday.secureauth.security.PasswordUtil;
+import dev.tienday.secureauth.util.TitleUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -54,6 +55,7 @@ public final class PluginHttpServer {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             server.createContext("/auth/verify-credentials", this::handleVerifyCredentials);
             server.createContext("/auth/discord-status", this::handleDiscordStatus);
+            server.createContext("/auth/ip-confirm", this::handleIpConfirm);
             server.createContext("/auth/health", this::handleHealth);
             server.setExecutor(Executors.newFixedThreadPool(2));
             server.start();
@@ -190,6 +192,63 @@ public final class PluginHttpServer {
                 data.isTwoFaEnabled(),
                 linked ? "\"" + escape(data.getDiscordId()) + "\"" : "null");
         respond(ex, 200, json);
+    }
+
+    /**
+     * POST /auth/ip-confirm
+     * Body: {"token":"...","action":"approve"|"deny"}
+     * Bot gọi khi user bấm nút Xác nhận / Từ chối.
+     */
+    private void handleIpConfirm(HttpExchange ex) throws IOException {
+        if (!checkMethod(ex, "POST")) return;
+        if (!checkAuth(ex)) return;
+
+        String body = readBody(ex);
+        String token  = extractJson(body, "token");
+        String action = extractJson(body, "action");
+        if (token == null || token.isBlank() || action == null || action.isBlank()) {
+            respond(ex, 400, "{\"error\":\"missing_token_or_action\"}");
+            return;
+        }
+
+        var resolved = plugin.getTwoFactorManager().resolveIpConfirm(token, action);
+        String uuidStr = resolved.uuid();
+        switch (resolved.result()) {
+            case APPROVED -> {
+                if (uuidStr != null) {
+                    try {
+                        UUID uuid = UUID.fromString(uuidStr);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            Player p = Bukkit.getPlayer(uuid);
+                            if (p != null && p.isOnline()
+                                    && !plugin.getSessionManager().isAuthenticated(uuid)) {
+                                new dev.tienday.secureauth.command.LoginCommand(plugin)
+                                        .completeLoginFromExternal(p, "ip-confirm-approved");
+                            }
+                        });
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                respond(ex, 200, "{\"ok\":true,\"result\":\"approved\"}");
+            }
+            case DENIED -> {
+                if (uuidStr != null) {
+                    try {
+                        UUID uuid = UUID.fromString(uuidStr);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            Player p = Bukkit.getPlayer(uuid);
+                            if (p != null && p.isOnline()) {
+                                plugin.getSessionManager().invalidate(uuid);
+                                TitleUtil.loginDenied(p);
+                                p.kick(plugin.getConfigManager().getMessageNoPrefix("kick-ip-denied"));
+                            }
+                        });
+                    } catch (IllegalArgumentException ignored) {}
+                }
+                respond(ex, 200, "{\"ok\":true,\"result\":\"denied\"}");
+            }
+            case EXPIRED -> respond(ex, 410, "{\"error\":\"expired\"}");
+            case NOT_FOUND -> respond(ex, 404, "{\"error\":\"not_found\"}");
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
