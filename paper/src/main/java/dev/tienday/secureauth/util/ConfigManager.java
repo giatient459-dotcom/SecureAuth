@@ -133,7 +133,27 @@ public class ConfigManager {
         return plugin.getConfig().getBoolean("security.ip-session.enabled", true);
     }
     public int getIpSessionHours() {
-        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
+        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 72));
+    }
+
+    /** true = IP mới gửi Discord nút Xác nhận/Từ chối (không cần /login mã) */
+    public boolean isIpConfirmButtonsEnabled() {
+        return plugin.getConfig().getBoolean("security.ip-session.confirm-buttons", true);
+    }
+
+    public int getIpConfirmExpirySeconds() {
+        return Math.max(30, plugin.getConfig().getInt("security.ip-session.confirm-expiry-seconds", 120));
+    }
+
+    // ---- Premium auto-login ----
+
+    public boolean isPremiumAutoLogin() {
+        return plugin.getConfig().getBoolean("security.premium-auto-login", true);
+    }
+
+    /** Premium vẫn bắt 2FA khi IP mới / force2fa */
+    public boolean isPremiumRequire2fa() {
+        return plugin.getConfig().getBoolean("security.premium-require-2fa", true);
     }
 
     // ---- Password policy ----
