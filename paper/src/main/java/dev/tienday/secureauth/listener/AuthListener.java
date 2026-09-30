@@ -61,30 +61,19 @@ public class AuthListener implements Listener {
         // Lưu vị trí thật NGAY (tick 0) trước khi bất kỳ teleport nào xảy ra
         plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
 
-        // Teleport đến The End lobby trước khi login
+        // TP login lobby nếu đã /authsetspawn (AuthMe-style). Chưa set → giữ chỗ join.
         new BukkitRunnable() {
             @Override
             public void run() {
                 if (!player.isOnline()) return;
                 if (plugin.getSessionManager().isAuthenticated(uuid)) return;
 
-                // Lấy world The End (tên mặc định: world_the_end)
-                String endWorldName = plugin.getConfig().getString("login-world.end-world", "world_the_end");
-                org.bukkit.World endWorld = plugin.getServer().getWorld(endWorldName);
-
-                if (endWorld != null) {
-                    double x = plugin.getConfig().getDouble("login-world.x", 0.5);
-                    double y = plugin.getConfig().getDouble("login-world.y", 64);
-                    double z = plugin.getConfig().getDouble("login-world.z", 0.5);
-                    float yaw   = (float) plugin.getConfig().getDouble("login-world.yaw", 0);
-                    float pitch = (float) plugin.getConfig().getDouble("login-world.pitch", 0);
-                    player.teleport(new org.bukkit.Location(endWorld, x, y, z, yaw, pitch));
-                } else {
-                    plugin.getLogger().warning("[SecureAuth] Login world '" + endWorldName
-                            + "' not found! Check login-world.end-world in config.yml");
+                org.bukkit.Location spawn = plugin.getConfigManager().getLoginSpawnLocation();
+                if (spawn != null) {
+                    player.teleport(spawn);
                 }
             }
-        }.runTaskLater(plugin, 5L); // 5 tick — đủ để client load xong
+        }.runTaskLater(plugin, 5L);
 
         // Deferred: premium auto-login hoặc prompt login
         new BukkitRunnable() {
@@ -140,7 +129,7 @@ public class AuthListener implements Listener {
             }
         }.runTaskLater(plugin, 20L);
 
-        long timeoutTicks = plugin.getConfigManager().getSessionTimeout() * 20L;
+        long timeoutTicks = plugin.getConfigManager().getLoginTimeout() * 20L;
         new BukkitRunnable() {
             @Override
             public void run() {
