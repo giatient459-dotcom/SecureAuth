@@ -53,8 +53,61 @@ public class ConfigManager {
 
     // ---- Security ----
 
+    /** Thời gian chờ /login sau khi join (giây) → hết thì kick. */
+    public int getLoginTimeout() {
+        int v = plugin.getConfig().getInt("security.login-timeout", -1);
+        if (v < 0) {
+            v = plugin.getConfig().getInt("security.session-timeout", 180);
+        }
+        return Math.max(30, v);
+    }
+
+    /** @deprecated dùng getLoginTimeout() */
     public int getSessionTimeout() {
-        return Math.max(30, plugin.getConfig().getInt("security.session-timeout", 300));
+        return getLoginTimeout();
+    }
+
+    /**
+     * Idle timeout sau khi đã authenticated (giây).
+     * 0 = không kick vì AFK.
+     */
+    public int getAuthIdleTimeout() {
+        return Math.max(0, plugin.getConfig().getInt("security.auth-idle-timeout", 604800));
+    }
+
+    /**
+     * Vị trí giữ player chưa login (AuthMe-style).
+     * null = không tp (giữ chỗ join).
+     */
+    public org.bukkit.Location getLoginSpawnLocation() {
+        String worldName = plugin.getConfig().getString("login-world.world", "");
+        if (worldName == null || worldName.isBlank()) {
+            worldName = plugin.getConfig().getString("login-world.end-world", "");
+        }
+        if (worldName == null || worldName.isBlank()) {
+            return null;
+        }
+        org.bukkit.World world = plugin.getServer().getWorld(worldName);
+        if (world == null) {
+            plugin.getLogger().warning("[SecureAuth] Login spawn world '" + worldName
+                    + "' chưa load. Dùng /authsetspawn khi đứng trong world đó, hoặc /mv load.");
+            return null;
+        }
+        double x = plugin.getConfig().getDouble("login-world.x", world.getSpawnLocation().getX());
+        double y = plugin.getConfig().getDouble("login-world.y", world.getSpawnLocation().getY());
+        double z = plugin.getConfig().getDouble("login-world.z", world.getSpawnLocation().getZ());
+        float yaw = (float) plugin.getConfig().getDouble("login-world.yaw", 0);
+        float pitch = (float) plugin.getConfig().getDouble("login-world.pitch", 0);
+        return new org.bukkit.Location(world, x, y, z, yaw, pitch);
+    }
+
+    /** Tên world login spawn (nếu có). */
+    public String getLoginSpawnWorldName() {
+        String w = plugin.getConfig().getString("login-world.world", "");
+        if (w == null || w.isBlank()) {
+            w = plugin.getConfig().getString("login-world.end-world", "");
+        }
+        return w == null ? "" : w;
     }
 
     public int getMaxAccountsPerIp() {
