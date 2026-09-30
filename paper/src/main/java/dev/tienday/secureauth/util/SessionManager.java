@@ -35,16 +35,18 @@ public class SessionManager {
 
     private void runTimeoutCheck() {
         long now = System.currentTimeMillis();
-        long timeoutMs = plugin.getConfigManager().getSessionTimeout() * 1000L;
+        int idleSec = plugin.getConfigManager().getAuthIdleTimeout();
+        if (idleSec <= 0) return; // 0 = không kick AFK
+        long timeoutMs = idleSec * 1000L;
 
         List<UUID> toKick = new ArrayList<>();
         for (Map.Entry<UUID, Long> entry : sessions.entrySet()) {
             UUID uuid = entry.getKey();
+            if (awaitingTwoFa.contains(uuid)) continue;
             Long lastActive = entry.getValue();
             if (lastActive == null) continue;
             if (now - lastActive <= timeoutMs) continue;
 
-            // Atomic removal — only if value hasn't been refreshed by a concurrent touch().
             if (sessions.remove(uuid, lastActive)) {
                 awaitingTwoFa.remove(uuid);
                 toKick.add(uuid);
@@ -119,17 +121,21 @@ public class SessionManager {
      */
     public void restoreLocationAfterLogin(Player player) {
         Location saved = preLoginLocations.remove(player.getUniqueId());
-        String endWorld = plugin.getConfig().getString("login-world.end-world", "world_the_end");
+        String loginWorld = plugin.getConfigManager().getLoginSpawnWorldName();
 
-        if (saved != null && saved.getWorld() != null
-                && !saved.getWorld().getName().equals(endWorld)) {
-            // Có vị trí lưu và không phải End → restore
-            player.teleport(saved);
-        } else {
-            // Không có vị trí lưu (lần đầu join) hoặc vị trí lưu là End
-            // → tp về spawn của world mặc định
+        if (saved != null && saved.getWorld() != null) {
+            // Nếu vị trí join khác login-lobby → restore chỗ thật
+            if (loginWorld.isEmpty() || !saved.getWorld().getName().equals(loginWorld)) {
+                player.teleport(saved);
+                return;
+            }
+        }
+        // Join lần đầu / chỉ đứng trong login-lobby → world đầu tiên (hoặc giữ nguyên)
+        if (!plugin.getServer().getWorlds().isEmpty()) {
             org.bukkit.World defaultWorld = plugin.getServer().getWorlds().get(0);
-            if (defaultWorld != null) {
+            if (defaultWorld != null
+                    && (player.getWorld() == null
+                    || (!loginWorld.isEmpty() && player.getWorld().getName().equals(loginWorld)))) {
                 player.teleport(defaultWorld.getSpawnLocation());
             }
         }
