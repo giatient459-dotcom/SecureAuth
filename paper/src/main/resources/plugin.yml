@@ -28,9 +28,10 @@ commands:
     usage: /uuid
 
   authsetspawn:
-    description: Để chỗ cho người dùng chưa login
+    description: Set login lobby (AuthMe-style)
     usage: /authsetspawn
     permission: secureauth.admin
+    aliases: [setlobby, authsetlobby]
 
   authadmin:
     description: Admin commands for SecureAuth
