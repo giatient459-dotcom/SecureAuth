@@ -11,10 +11,8 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * /authsetspawn — lưu vị trí hiện tại làm nơi tp player khi chưa login.
- * Yêu cầu permission: secureauth.admin
- *
- * Lưu vào config.yml section login-world.
+ * /authsetspawn | /setlobby — lưu vị trí hiện tại làm nơi giữ player chưa login.
+ * Giống AuthMe setspawn: đứng đâu cũng được (Lobby, limbo, world...).
  */
 public class SetSpawnCommand implements CommandExecutor {
 
@@ -39,24 +37,28 @@ public class SetSpawnCommand implements CommandExecutor {
         }
 
         Location loc = player.getLocation();
+        if (loc.getWorld() == null) {
+            sender.sendMessage(Component.text("Invalid world.", NamedTextColor.RED));
+            return true;
+        }
 
-        // Lưu world name và tọa độ vào config
-        plugin.getConfig().set("login-world.end-world", loc.getWorld().getName());
-        plugin.getConfig().set("login-world.x",   loc.getX());
-        plugin.getConfig().set("login-world.y",   loc.getY());
-        plugin.getConfig().set("login-world.z",   loc.getZ());
-        plugin.getConfig().set("login-world.yaw",   (double) loc.getYaw());
+        String worldName = loc.getWorld().getName();
+        plugin.getConfig().set("login-world.world", worldName);
+        plugin.getConfig().set("login-world.end-world", worldName); // tương thích cũ
+        plugin.getConfig().set("login-world.x", loc.getX());
+        plugin.getConfig().set("login-world.y", loc.getY());
+        plugin.getConfig().set("login-world.z", loc.getZ());
+        plugin.getConfig().set("login-world.yaw", (double) loc.getYaw());
         plugin.getConfig().set("login-world.pitch", (double) loc.getPitch());
         plugin.saveConfig();
 
         player.sendMessage(Component.text(
-                String.format("§a[SecureAuth] Login spawn set: §f%s §7@ §f%.2f, %.2f, %.2f",
-                        loc.getWorld().getName(), loc.getX(), loc.getY(), loc.getZ()),
+                String.format("Login lobby set: %s @ %.2f, %.2f, %.2f",
+                        worldName, loc.getX(), loc.getY(), loc.getZ()),
                 NamedTextColor.GREEN));
 
-        plugin.getLogger().info("[SecureAuth] Login spawn updated by " + player.getName()
-                + " → " + loc.getWorld().getName()
-                + " " + loc.getX() + " " + loc.getY() + " " + loc.getZ());
+        plugin.getLogger().info("[SecureAuth] Login lobby by " + player.getName()
+                + " → " + worldName + " " + loc.getX() + " " + loc.getY() + " " + loc.getZ());
 
         return true;
     }
