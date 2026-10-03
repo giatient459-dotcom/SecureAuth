@@ -9,23 +9,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
 
-/**
- * SQLite-backed DatabaseManager — SMART MIGRATION v2.0
- *
- * Fix v2.0:
- *  - CREATE TABLE có đủ cột register_ip + last_login_ip
- *  - Smart migration: PRAGMA table_info check trước ALTER
- *  - Tạo index SAU khi cột tồn tại (fix no such column: register_ip)
- *  - Schema version tracking (sa_schema_version)
- *  - Thread-safe (synchronized trên write operations)
- */
 public class DatabaseManager {
 
-    /** Schema version hiện tại — tăng khi có migration mới */
     private static final int SCHEMA_VERSION = 2;
 
     private final SecureAuthPlugin plugin;
-    private Connection connection;
+    private volatile Connection connection;
 
     public DatabaseManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
@@ -33,11 +22,13 @@ public class DatabaseManager {
 
     // ── Init ──────────────────────────────────────────────────────────────────
 
-    public void init() throws Exception {
+    public synchronized void init() throws Exception {
+        // Đóng connection cũ nếu có (tránh leak khi reload)
+        closeQuietly();
+
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) dataFolder.mkdirs();
 
-        // Native SQLite lib trong thư mục plugin (tránh /tmp bị chặn)
         File nativeDir = new File(dataFolder, "native");
         if (!nativeDir.exists()) nativeDir.mkdirs();
         System.setProperty("org.sqlite.lib.path", nativeDir.getAbsolutePath());
@@ -62,12 +53,10 @@ public class DatabaseManager {
                 + " (schema v" + SCHEMA_VERSION + ")");
     }
 
-    // ── Schema — Bảng gốc ─────────────────────────────────────────────────────
+    // ── Schema ────────────────────────────────────────────────────────────────
 
     private void createTables() throws SQLException {
         try (Statement st = connection.createStatement()) {
-
-            // ── sa_players (schema ĐẦY ĐỦ, có register_ip) ──
             st.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS sa_players (
                     uuid           TEXT NOT NULL PRIMARY KEY,
@@ -82,7 +71,6 @@ public class DatabaseManager {
                     last_login_ip  TEXT DEFAULT NULL
                 )
             """);
-
             st.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS sa_link_codes (
                     code        TEXT NOT NULL PRIMARY KEY,
@@ -91,7 +79,6 @@ public class DatabaseManager {
                     expires_at  INTEGER NOT NULL
                 )
             """);
-
             st.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS sa_security_log (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,8 +90,6 @@ public class DatabaseManager {
                     occurred_at INTEGER NOT NULL
                 )
             """);
-
-            // Bảng track schema version
             st.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS sa_schema_version (
                     version    INTEGER PRIMARY KEY,
@@ -114,24 +99,15 @@ public class DatabaseManager {
         }
     }
 
-    // ── SMART MIGRATION ───────────────────────────────────────────────────────
+    // ── Migration ─────────────────────────────────────────────────────────────
 
-    /**
-     * Migration engine:
-     *  1. Safe add columns (dùng PRAGMA check)
-     *  2. Tạo indexes (SAU khi cột tồn tại)
-     *  3. Track schema version
-     */
     private void runMigrations() throws SQLException {
         try (Statement st = connection.createStatement()) {
-
-            // ── 1. Safe add columns (DB cũ thiếu cột) ──
             safeAddColumn(st, "sa_players", "register_ip",
                 "ALTER TABLE sa_players ADD COLUMN register_ip TEXT DEFAULT NULL");
             safeAddColumn(st, "sa_players", "last_login_ip",
                 "ALTER TABLE sa_players ADD COLUMN last_login_ip TEXT DEFAULT NULL");
 
-            // ── 2. Indexes (cột đã tồn tại chắc chắn) ──
             safeCreateIndex(st, "idx_log_uuid",
                 "CREATE INDEX IF NOT EXISTS idx_log_uuid ON sa_security_log(uuid)");
             safeCreateIndex(st, "idx_log_time",
@@ -142,36 +118,30 @@ public class DatabaseManager {
                 "CREATE INDEX IF NOT EXISTS idx_players_register_ip ON sa_players(register_ip)");
             safeCreateIndex(st, "idx_players_last_login_ip",
                 "CREATE INDEX IF NOT EXISTS idx_players_last_login_ip ON sa_players(last_login_ip)");
-
-            // Unique partial index cho discord_id
-            safeCreateIndex(st, "uk_players_discord",
-                "CREATE UNIQUE INDEX IF NOT EXISTS uk_players_discord ON sa_players(discord_id) " +
-                "WHERE discord_id IS NOT NULL");
-
-            // Index cho link_codes
             safeCreateIndex(st, "idx_link_codes_expires",
                 "CREATE INDEX IF NOT EXISTS idx_link_codes_expires ON sa_link_codes(expires_at)");
             safeCreateIndex(st, "idx_link_codes_discord",
                 "CREATE INDEX IF NOT EXISTS idx_link_codes_discord ON sa_link_codes(discord_id)");
 
-            // ── 3. Track schema version ──
+            // Unique partial index — có thể fail nếu DB cũ có duplicate
+            safeCreateUniqueIndex(st, "uk_players_discord",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uk_players_discord ON sa_players(discord_id) " +
+                "WHERE discord_id IS NOT NULL");
+
             trackSchemaVersion(st);
         }
     }
 
-    /**
-     * Thêm cột an toàn — dùng PRAGMA table_info check trước.
-     * Không throw exception nếu cột đã tồn tại.
-     */
     private void safeAddColumn(Statement st, String table, String column, String alterSql) {
-        try {
-            try (ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
-                while (rs.next()) {
-                    if (column.equalsIgnoreCase(rs.getString("name"))) {
-                        return; // Cột đã có → bỏ qua
-                    }
-                }
+        try (ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) return;
             }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "[Migration] PRAGMA failed: " + e.getMessage());
+            return;
+        }
+        try {
             st.executeUpdate(alterSql);
             plugin.getLogger().info("[Migration] Added column " + table + "." + column);
         } catch (SQLException e) {
@@ -180,9 +150,6 @@ public class DatabaseManager {
         }
     }
 
-    /**
-     * Tạo index an toàn — không throw exception.
-     */
     private void safeCreateIndex(Statement st, String name, String createSql) {
         try {
             st.executeUpdate(createSql);
@@ -192,21 +159,29 @@ public class DatabaseManager {
         }
     }
 
-    /**
-     * Ghi nhận schema version hiện tại.
-     */
-    private void trackSchemaVersion(Statement st) throws SQLException {
+    private void safeCreateUniqueIndex(Statement st, String name, String createSql) {
+        try {
+            st.executeUpdate(createSql);
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING,
+                "[Migration] Unique index " + name + " failed (duplicate data?): " + e.getMessage());
+        }
+    }
+
+    private void trackSchemaVersion(Statement st) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT OR IGNORE INTO sa_schema_version (version, applied_at) VALUES (?, ?)")) {
             ps.setInt(1, SCHEMA_VERSION);
             ps.setLong(2, System.currentTimeMillis());
             ps.executeUpdate();
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.FINE, "[Migration] Schema version skip: " + e.getMessage());
+        }
     }
 
-    // ── Reconnect guard ───────────────────────────────────────────────────────
+    // ── Connection guard ──────────────────────────────────────────────────────
 
-    private Connection getConn() throws SQLException {
+    private synchronized Connection getConn() throws SQLException {
         if (connection == null || connection.isClosed()) {
             File dbFile = new File(plugin.getDataFolder(), "secureauth.db");
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
@@ -215,6 +190,7 @@ public class DatabaseManager {
                 st.execute("PRAGMA foreign_keys=ON");
                 st.execute("PRAGMA busy_timeout=5000");
             }
+            plugin.getLogger().warning("[DB] Reconnected to SQLite.");
         }
         return connection;
     }
@@ -278,23 +254,40 @@ public class DatabaseManager {
             WHERE uuid = ? AND disabled = 1
             """;
         synchronized (this) {
+            Connection conn;
+            try { conn = getConn(); } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "registerPlayer getConn error", e);
+                return false;
+            }
             try {
-                Connection conn = getConn();
-                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
-                    ps.setString(1, uuid);
-                    ps.setString(2, username);
-                    ps.setString(3, passwordHash);
-                    ps.setLong(4, System.currentTimeMillis());
-                    ps.setString(5, ip);
-                    if (ps.executeUpdate() > 0) return true;
-                }
-                try (PreparedStatement ps = conn.prepareStatement(reviveSql)) {
-                    ps.setString(1, username);
-                    ps.setString(2, passwordHash);
-                    ps.setLong(3, System.currentTimeMillis());
-                    ps.setString(4, ip);
-                    ps.setString(5, uuid);
-                    return ps.executeUpdate() > 0;
+                conn.setAutoCommit(false);
+                try {
+                    try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                        ps.setString(1, uuid);
+                        ps.setString(2, username);
+                        ps.setString(3, passwordHash);
+                        ps.setLong(4, System.currentTimeMillis());
+                        ps.setString(5, ip);
+                        if (ps.executeUpdate() > 0) {
+                            conn.commit();
+                            return true;
+                        }
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(reviveSql)) {
+                        ps.setString(1, username);
+                        ps.setString(2, passwordHash);
+                        ps.setLong(3, System.currentTimeMillis());
+                        ps.setString(4, ip);
+                        ps.setString(5, uuid);
+                        boolean ok = ps.executeUpdate() > 0;
+                        conn.commit();
+                        return ok;
+                    }
+                } catch (SQLException e) {
+                    try { conn.rollback(); } catch (SQLException ignored) {}
+                    throw e;
+                } finally {
+                    try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
             } catch (SQLException e) {
                 plugin.getLogger().log(Level.SEVERE, "registerPlayer error", e);
@@ -308,12 +301,13 @@ public class DatabaseManager {
     }
 
     public void updateLastLogin(String uuid, String ip) {
-        final String sql = (ip != null && !ip.isBlank() && !"unknown".equals(ip))
+        boolean hasIp = ip != null && !ip.isBlank() && !"unknown".equals(ip);
+        final String sql = hasIp
                 ? "UPDATE sa_players SET last_login_at = ?, last_login_ip = ? WHERE uuid = ?"
                 : "UPDATE sa_players SET last_login_at = ? WHERE uuid = ?";
         try (PreparedStatement ps = getConn().prepareStatement(sql)) {
             long now = System.currentTimeMillis();
-            if (ip != null && !ip.isBlank() && !"unknown".equals(ip)) {
+            if (hasIp) {
                 ps.setLong(1, now);
                 ps.setString(2, ip);
                 ps.setString(3, uuid);
@@ -367,8 +361,12 @@ public class DatabaseManager {
         final String delCodes  = "DELETE FROM sa_link_codes WHERE uuid = ?";
         final String delPlayer = "DELETE FROM sa_players WHERE uuid = ?";
         synchronized (this) {
+            Connection conn;
+            try { conn = getConn(); } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "deleteAccount getConn error", e);
+                return;
+            }
             try {
-                Connection conn = getConn();
                 conn.setAutoCommit(false);
                 try {
                     try (PreparedStatement ps = conn.prepareStatement(delCodes)) {
@@ -460,8 +458,12 @@ public class DatabaseManager {
         final String del = "DELETE FROM sa_link_codes WHERE uuid = ?";
         final String ins = "INSERT OR REPLACE INTO sa_link_codes (code, uuid, discord_id, expires_at) VALUES (?, ?, ?, ?)";
         synchronized (this) {
+            Connection conn;
+            try { conn = getConn(); } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "storeLinkCode getConn error", e);
+                return;
+            }
             try {
-                Connection conn = getConn();
                 conn.setAutoCommit(false);
                 try {
                     try (PreparedStatement ps = conn.prepareStatement(del)) {
@@ -492,8 +494,12 @@ public class DatabaseManager {
         final String sel = "SELECT uuid, discord_id, expires_at FROM sa_link_codes WHERE code = ? LIMIT 1";
         final String del = "DELETE FROM sa_link_codes WHERE code = ?";
         synchronized (this) {
+            Connection conn;
+            try { conn = getConn(); } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "consumeLinkCode getConn error", e);
+                return Optional.empty();
+            }
             try {
-                Connection conn = getConn();
                 conn.setAutoCommit(false);
                 LinkConsumeResult result = null;
                 try {
@@ -643,20 +649,22 @@ public class DatabaseManager {
     private PlayerData mapRow(ResultSet rs) throws SQLException {
         String discord = rs.getString("discord_id");
         if (rs.wasNull()) discord = null;
+
         String lastIp = null;
-        String regIp = null;
         try {
             lastIp = rs.getString("last_login_ip");
             if (rs.wasNull()) lastIp = null;
         } catch (SQLException ignored) {}
+
+        String regIp = null;
         try {
             regIp = rs.getString("register_ip");
             if (rs.wasNull()) regIp = null;
         } catch (SQLException ignored) {}
+
         boolean disabled = false;
-        try {
-            disabled = rs.getInt("disabled") == 1;
-        } catch (SQLException ignored) {}
+        try { disabled = rs.getInt("disabled") == 1; } catch (SQLException ignored) {}
+
         return new PlayerData(
                 rs.getString("uuid"),
                 rs.getString("username"),
@@ -676,12 +684,20 @@ public class DatabaseManager {
         catch (SQLException e) { return false; }
     }
 
-    public void close() {
-        try { if (connection != null && !connection.isClosed()) connection.close(); }
-        catch (SQLException e) { plugin.getLogger().log(Level.WARNING, "DB close error", e); }
+    public synchronized void close() {
+        closeQuietly();
     }
 
-    /** Get schema version hiện tại (debug) */
+    private void closeQuietly() {
+        try {
+            if (connection != null && !connection.isClosed()) connection.close();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "DB close error", e);
+        } finally {
+            connection = null;
+        }
+    }
+
     public int getSchemaVersion() {
         try (Statement st = getConn().createStatement();
              ResultSet rs = st.executeQuery("SELECT MAX(version) FROM sa_schema_version")) {
@@ -689,4 +705,4 @@ public class DatabaseManager {
         } catch (SQLException ignored) {}
         return 0;
     }
-                                                                      }
+                    }
