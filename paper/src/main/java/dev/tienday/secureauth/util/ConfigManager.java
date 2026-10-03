@@ -53,31 +53,15 @@ public class ConfigManager {
 
     // ---- Security ----
 
-    /** Thời gian chờ /login sau khi join (giây) → hết thì kick. */
-    public int getLoginTimeout() {
-        int v = plugin.getConfig().getInt("security.login-timeout", -1);
-        if (v < 0) {
-            v = plugin.getConfig().getInt("security.session-timeout", 180);
-        }
-        return Math.max(30, v);
-    }
-
-    /** @deprecated dùng getLoginTimeout() */
     public int getSessionTimeout() {
-        return getLoginTimeout();
+        return Math.max(30, plugin.getConfig().getInt("security.session-timeout", 300));
     }
 
-    /**
-     * Idle timeout sau khi đã authenticated (giây).
-     * 0 = không kick vì AFK.
-     */
-    public int getAuthIdleTimeout() {
-        return Math.max(0, plugin.getConfig().getInt("security.auth-idle-timeout", 604800));
-    }
+
+    // ---- Login lobby (AuthMe-style) ----
 
     /**
-     * Vị trí giữ player chưa login (AuthMe-style).
-     * null = không tp (giữ chỗ join).
+     * Điểm giữ player chưa login. null nếu chưa /authsetspawn (world trống).
      */
     public org.bukkit.Location getLoginSpawnLocation() {
         String worldName = plugin.getConfig().getString("login-world.world", "");
@@ -90,7 +74,7 @@ public class ConfigManager {
         org.bukkit.World world = plugin.getServer().getWorld(worldName);
         if (world == null) {
             plugin.getLogger().warning("[SecureAuth] Login spawn world '" + worldName
-                    + "' chưa load. Dùng /authsetspawn khi đứng trong world đó, hoặc /mv load.");
+                    + "' chưa load. Dùng /authsetspawn trong world đó, hoặc load world.");
             return null;
         }
         double x = plugin.getConfig().getDouble("login-world.x", world.getSpawnLocation().getX());
@@ -101,7 +85,7 @@ public class ConfigManager {
         return new org.bukkit.Location(world, x, y, z, yaw, pitch);
     }
 
-    /** Tên world login spawn (nếu có). */
+    /** Tên world login lobby (rỗng = chưa set). */
     public String getLoginSpawnWorldName() {
         String w = plugin.getConfig().getString("login-world.world", "");
         if (w == null || w.isBlank()) {
@@ -186,27 +170,7 @@ public class ConfigManager {
         return plugin.getConfig().getBoolean("security.ip-session.enabled", true);
     }
     public int getIpSessionHours() {
-        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 72));
-    }
-
-    /** true = IP mới gửi Discord nút Xác nhận/Từ chối (không cần /login mã) */
-    public boolean isIpConfirmButtonsEnabled() {
-        return plugin.getConfig().getBoolean("security.ip-session.confirm-buttons", true);
-    }
-
-    public int getIpConfirmExpirySeconds() {
-        return Math.max(30, plugin.getConfig().getInt("security.ip-session.confirm-expiry-seconds", 120));
-    }
-
-    // ---- Premium auto-login ----
-
-    public boolean isPremiumAutoLogin() {
-        return plugin.getConfig().getBoolean("security.premium-auto-login", true);
-    }
-
-    /** Premium vẫn bắt 2FA khi IP mới / force2fa */
-    public boolean isPremiumRequire2fa() {
-        return plugin.getConfig().getBoolean("security.premium-require-2fa", true);
+        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
     }
 
     // ---- Password policy ----
