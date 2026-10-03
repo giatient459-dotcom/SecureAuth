@@ -8,23 +8,23 @@ load: POSTWORLD
 
 commands:
   login:
-    description: Đăng nhập để vô server MeoDenMC
-    usage: /dn <mật khẩu> [2fa_code]
+    description: Login to the server
+    usage: /login <password> [2fa_code]
     aliases: [l]
   register:
-    description: Đăng Ký Tài Khoản
-    usage: /dk <mật khẩu> <xác nhận mật khẩu>
+    description: Register an account
+    usage: /register <password> <confirm_password>
     aliases: [reg]
   link:
-    description: Liên kết tài khoản (Dùng code từ bot 2FA)
-    usage: /liên kết <mã>
+    description: Link your Discord account (use code from bot DM)
+    usage: /link <code>
   changepassword:
-    description: Đổi mật khẩu
-    usage: /changepassword <cũ> <mới> <xác nhận>
+    description: Change your password
+    usage: /changepassword <old> <new> <confirm>
     aliases: [cp, passwd]
 
   uuid:
-    description: Hiện cái Minecraft UUID của bạn
+    description: Show your Minecraft UUID
     usage: /uuid
 
   authsetspawn:
@@ -35,20 +35,13 @@ commands:
 
   authadmin:
     description: Admin commands for SecureAuth
-    usage: /authadmin <reset|resetfa|info|list|search|logs|backup|reload> ...
+    usage: /authadmin <reset|resetfa|info|list|search|logs|backup> ...
     permission: secureauth.admin
     permission-message: "&cNo permission."
-
-  secureauth:
-    description: SecureAuth main command (reload)
-    usage: /secureauth reload
-    permission: secureauth.admin
-    permission-message: "&cNo permission."
-    aliases: [sa]
 
 permissions:
   secureauth.admin:
-    description: Access to /authadmin and /secureauth commands
+    description: Access to /authadmin commands
     default: false
 
   secureauth.force2fa:
