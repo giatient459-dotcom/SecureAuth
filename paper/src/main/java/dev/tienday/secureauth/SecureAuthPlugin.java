@@ -26,11 +26,15 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private LicenseManager licenseManager;
     private PluginHttpServer pluginHttpServer;
 
+    private IpSessionStore ipSessionStore;
+    private WebhookNotifier webhookNotifier;
+    private BackupManager backupManager;
+
     @Override
     public void onEnable() {
         instance = this;
 
-        // ── 1. Config: save + validate trước mọi thứ ────────────────────────
+        // ── 1. Config ───────────────────────────────────────────────────────
         try {
             saveDefaultConfig();
             configManager = new ConfigManager(this);
@@ -41,7 +45,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
             return;
         }
 
-        // ── 2. License check ────────────────────────────────────────────────
+        // ── 2. License ──────────────────────────────────────────────────────
         try {
             licenseManager = new LicenseManager(this);
             if (!licenseManager.verify()) {
@@ -55,13 +59,12 @@ public final class SecureAuthPlugin extends JavaPlugin {
             return;
         }
 
-        // ── 3. Audit logger ─────────────────────────────────────────────────
+        // ── 3. Audit Logger ─────────────────────────────────────────────────
         try {
             auditLogger = new AuditLogger(this);
             auditLogger.start();
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "[Audit] Không khởi động được audit logger.", e);
-            // không disable plugin ở đây, chỉ log
         }
 
         // ── 4. Database ─────────────────────────────────────────────────────
@@ -80,6 +83,25 @@ public final class SecureAuthPlugin extends JavaPlugin {
         rateLimiter      = new RateLimiter(this);
         twoFactorManager = new TwoFactorManager(this);
 
+        try {
+            ipSessionStore = new IpSessionStore(this);
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "[IpSessionStore] Không khởi tạo được.", e);
+        }
+
+        try {
+            webhookNotifier = new WebhookNotifier(this);
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "[WebhookNotifier] Không khởi tạo được.", e);
+        }
+
+        try {
+            backupManager = new BackupManager(this);
+            backupManager.startScheduled();
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "[BackupManager] Không khởi tạo được.", e);
+        }
+
         // ── 6. Commands ─────────────────────────────────────────────────────
         boolean commandsOk = true;
         commandsOk &= registerCommand("login",          new LoginCommand(this));
@@ -91,7 +113,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
         commandsOk &= registerCommand("changepassword", new ChangePasswordCommand(this));
 
         if (!commandsOk) {
-            getLogger().severe("[Commands] Một hoặc nhiều command bị thiếu trong plugin.yml — plugin disabled.");
+            getLogger().severe("[Commands] Một hoặc nhiều command thiếu trong plugin.yml — plugin disabled.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -117,7 +139,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
             pluginHttpServer = new PluginHttpServer(this);
             pluginHttpServer.start();
         } catch (Exception e) {
-            getLogger().log(Level.SEVERE, "[HTTP] Không start được HTTP server (port bị chiếm?), plugin disabled.", e);
+            getLogger().log(Level.SEVERE, "[HTTP] Không start được HTTP server, plugin disabled.", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -128,7 +150,6 @@ public final class SecureAuthPlugin extends JavaPlugin {
         getLogger().info("SecureAuth enabled successfully.");
     }
 
-    /** @return true nếu command được đăng ký thành công */
     private boolean registerCommand(String name, CommandExecutor executor) {
         PluginCommand cmd = getCommand(name);
         if (cmd == null) {
@@ -141,9 +162,14 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Dừng theo thứ tự ngược với lúc start
         if (pluginHttpServer != null) {
             try { pluginHttpServer.stop(); } catch (Exception e) { getLogger().warning("HTTP stop error: " + e.getMessage()); }
+        }
+        if (backupManager != null) {
+            try { backupManager.shutdown(); } catch (Exception e) { getLogger().warning("BackupManager stop error: " + e.getMessage()); }
+        }
+        if (ipSessionStore != null) {
+            try { ipSessionStore.shutdown(); } catch (Exception e) { getLogger().warning("IpSessionStore stop error: " + e.getMessage()); }
         }
         if (rateLimiter != null) {
             try { rateLimiter.shutdown(); } catch (Exception e) { getLogger().warning("RateLimiter stop error: " + e.getMessage()); }
@@ -164,6 +190,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
         getLogger().info("SecureAuth disabled.");
     }
 
+    // ── Getters ─────────────────────────────────────────────────────────────
+
     public static SecureAuthPlugin getInstance()  { return instance; }
     public ConfigManager getConfigManager()       { return configManager; }
     public DatabaseManager getDatabaseManager()   { return databaseManager; }
@@ -172,4 +200,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
     public TwoFactorManager getTwoFactorManager() { return twoFactorManager; }
     public AuditLogger getAuditLogger()           { return auditLogger; }
     public LicenseManager getLicenseManager()     { return licenseManager; }
+    public IpSessionStore getIpSessionStore()     { return ipSessionStore; }
+    public WebhookNotifier getWebhookNotifier()   { return webhookNotifier; }
+    public BackupManager getBackupManager()       { return backupManager; }
 }
