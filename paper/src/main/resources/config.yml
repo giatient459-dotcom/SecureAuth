@@ -4,12 +4,7 @@
 # SQLite — không cần cài gì thêm, file tự tạo tại plugins/SecureAuth/secureauth.db
 
 security:
-  # Thời gian chờ login khi vừa vào server (giây) — hết hạn thì kick
-  login-timeout: 180
-  # Idle sau khi đã login (giây). 0 = không kick AFK. Mặc định 7 ngày
-  auth-idle-timeout: 604800
-  # Giữ key cũ (fallback) nếu chưa đổi config
-  session-timeout: 180
+  session-timeout: 300
   max-login-attempts: 5
   # Số account tối đa được đăng ký từ 1 IP (0 = không giới hạn)
   max-accounts-per-ip: 3
@@ -22,17 +17,10 @@ security:
   argon2-iterations: 3
   argon2-memory-kb: 65536
   argon2-parallelism: 4
-  # Premium (tài khoản thật) tự login — bỏ password
-  premium-auto-login: true
-  # Premium vẫn cần 2FA khi IP mới (khuyên true)
-  premium-require-2fa: true
   # Nhớ IP sau login thành công — bỏ qua 2FA trong X giờ nếu cùng IP
   ip-session:
     enabled: true
-    hours: 72
-    # IP mới → gửi Discord nút Xác nhận / Từ chối (không gõ /login mã)
-    confirm-buttons: true
-    confirm-expiry-seconds: 120
+    hours: 12
   # Yêu cầu mật khẩu có chữ + số (bật nếu muốn chặt hơn)
   password:
     min-length: 8
@@ -75,7 +63,6 @@ messages:
   kick-not-logged-in: "Bạn chưa đăng nhập trong thời gian quy định."
   kick-session-expired: "Phiên đăng nhập hết hạn."
   kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
-  kick-ip-denied: "Bạn đã từ chối đăng nhập từ IP này trên Discord."
   register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
   # Giới hạn đăng ký theo IP (thêm cho fix pack)
@@ -85,12 +72,6 @@ messages:
   captcha-wrong: "&cSai captcha. Thử lại."
   ip-session-skip-2fa: "&aNhận diện IP tin cậy — bỏ qua 2FA."
   force-2fa-required: "&eTài khoản staff bắt buộc 2FA. Hãy /link Discord trước."
-  ip-confirm-sent: "&ePhát hiện IP mới (&f{ip}&e). Mở Discord DM → bấm &aXác nhận &ehoặc &cTừ chối&e."
-  ip-confirm-approved: "&aĐã xác nhận IP mới trên Discord — đăng nhập thành công!"
-  ip-confirm-denied: "&cBạn đã từ chối đăng nhập từ IP này."
-  ip-confirm-waiting: "&eĐang chờ xác nhận trên Discord..."
-  premium-auto-login: "&aTài khoản Premium — tự đăng nhập."
-
 
 op-guard:
   block-op-commands: true
@@ -135,13 +116,12 @@ command-blocker:
     - "pardon-ip"
     - "whitelist"
 
-# Nơi giữ player CHƯA login (giống AuthMe spawn/lobby).
-# Đứng đúng chỗ muốn → gõ /authsetspawn (hoặc /setlobby) — không cần sửa tay tên world.
-# Để world rỗng + chưa setspawn → giữ nguyên vị trí join (không tp).
+# Nơi giữ player CHƯA login (AuthMe-style).
+# Đứng đúng chỗ → /authsetspawn (hoặc /setlobby). World rỗng = không TP khi join.
 login-world:
-  # Tên world do /authsetspawn ghi. Có thể là Lobby, world, limbo... bất kỳ.
+  # Do /authsetspawn ghi (Lobby, limbo, world...). Để trống nếu chưa set.
   world: ""
-  # Alias cũ (vẫn đọc được nếu world trống)
+  # Alias cũ (vẫn đọc nếu world trống)
   end-world: ""
   x: 0.5
   y: 64.0
