@@ -173,6 +173,17 @@ public class ConfigManager {
         return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
     }
 
+
+    /** Discord nút Xác nhận/Từ chối khi IP mới (thay vì gõ mã 2FA). */
+    public boolean isIpConfirmButtonsEnabled() {
+        return plugin.getConfig().getBoolean("security.ip-session.confirm-buttons", true);
+    }
+
+    public int getIpConfirmExpirySeconds() {
+        return Math.max(30, plugin.getConfig().getInt("security.ip-session.confirm-expiry-seconds", 300));
+    }
+
+
     // ---- Password policy ----
 
     public boolean isPasswordRequireMixed() {
