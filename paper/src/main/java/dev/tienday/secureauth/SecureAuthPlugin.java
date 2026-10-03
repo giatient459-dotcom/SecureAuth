@@ -54,7 +54,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
                 return;
             }
         } catch (Exception e) {
-            getLogger().log(Level.SEVERE, "[License] Lỗi khi verify license, plugin disabled.", e);
+            getLogger().log(Level.SEVERE, "[License] Lỗi verify license, plugin disabled.", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
