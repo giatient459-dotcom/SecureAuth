@@ -1,10 +1,10 @@
 package dev.tienday.secureauth.security;
 
-import dev.tienday.secureauth.SecureAuthPlugin;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import dev.tienday.secureauth.SecureAuthPlugin;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -15,66 +15,73 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 /**
- * Kiểm tra license online khi plugin khởi động.
+ * License verification with HWID + cache.
  *
- * POST <license-url>/v1/verify
- * Body: { "key": "...", "hwid": "<server-id>", "plugin": "SecureAuth", "version": "..." }
- * Response: { "ok": true/false, "reason": "..." }
+ * Luồng:
+ *   1. LUÔN tạo HWID trước (kể cả khi key trống)
+ *   2. Nếu key trống → unlicensed mode
+ *   3. Kiểm tra cache (key|hwid|expiry)
+ *   4. Gọi API verify nếu cache hết hạn
+ *   5. Lưu cache nếu verify thành công
  *
- * HWID = UUID lưu trong file hwid.txt (tạo 1 lần duy nhất).
- * Cache license lưu trong license.cache (JSON).
- * Nếu verify fail → plugin disable.
- * Nếu không cấu hình key → bỏ qua (dev mode).
+ * HWID lưu ở plugins/SecureAuth/hwid.txt
+ * Cache lưu ở plugins/SecureAuth/license.cache
  */
 public class LicenseManager {
 
     private static final Gson GSON = new Gson();
-    private static final long CACHE_TTL_MS = 24 * 60 * 60 * 1000L; // 24 giờ
+    private static final String CACHE_FILE = "license.cache";
+    private static final long CACHE_TTL_MS = 23 * 60 * 60 * 1000L; // 23 giờ
 
     private final SecureAuthPlugin plugin;
     private boolean valid = false;
+    private String cachedHwid = null;
 
     public LicenseManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /** Gọi khi onEnable. @return true nếu hợp lệ hoặc không cấu hình key. */
+    // ── Verify ────────────────────────────────────────────────────────────
+
     public boolean verify() {
+        // ── BƯỚC 1: LUÔN tạo HWID trước ─────────────────────────────────
+        String hwid = getHwid();
+        plugin.getLogger().info("[License] Server HWID = " + hwid);
+        plugin.getLogger().info("[License] Copy HWID này để tạo key trên dashboard");
+
+        // ── BƯỚC 2: Kiểm tra key ────────────────────────────────────────
         String key = plugin.getConfig().getString("license.key", "").trim();
         if (key.isEmpty()) {
-            plugin.getLogger().warning("[License] No license key configured — running in unlicensed mode.");
+            plugin.getLogger().warning("[License] Chưa cấu hình license.key — chạy unlicensed mode.");
             valid = true;
             return true;
         }
 
+        // ── BƯỚC 3: Kiểm tra api-url ────────────────────────────────────
         String apiUrl = plugin.getConfig().getString("license.api-url", "").trim();
         if (apiUrl.isEmpty()) {
             plugin.getLogger().severe("[License] license.api-url not set!");
             return false;
         }
 
-        String hwid = getHwid();
-        String ver = plugin.getDescription().getVersion();
-
-        // ── 1. Kiểm tra cache trước ─────────────────────────────────────────
+        // ── BƯỚC 4: Kiểm tra cache ──────────────────────────────────────
         if (isCacheValid(key, hwid)) {
             plugin.getLogger().info("[License] Using cached license (valid).");
             valid = true;
             return true;
         }
 
-        // ── 2. Gọi API verify ───────────────────────────────────────────────
+        // ── BƯỚC 5: Gọi API verify ──────────────────────────────────────
         try {
             JsonObject payload = new JsonObject();
             payload.addProperty("key", key);
             payload.addProperty("hwid", hwid);
             payload.addProperty("plugin", "SecureAuth");
-            payload.addProperty("version", ver);
-
+            payload.addProperty("version", plugin.getDescription().getVersion());
             String body = GSON.toJson(payload);
 
-            HttpURLConnection conn = (HttpURLConnection)
-                    URI.create(apiUrl + "/v1/verify").toURL().openConnection();
+            String cleanUrl = apiUrl.replaceAll("/$", "") + "/v1/verify";
+            HttpURLConnection conn = (HttpURLConnection) URI.create(cleanUrl).toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
@@ -90,12 +97,12 @@ public class LicenseManager {
             String resp = readBody(conn);
             conn.disconnect();
 
-            // ── 3. Parse JSON an toàn bằng Gson ──────────────────────────────
+            // ── BƯỚC 6: Parse JSON an toàn ──────────────────────────────
             JsonObject json;
             try {
                 json = JsonParser.parseString(resp).getAsJsonObject();
             } catch (JsonSyntaxException | IllegalStateException e) {
-                plugin.getLogger().severe("[License] Invalid JSON response (HTTP " + status + "): " + resp);
+                plugin.getLogger().severe("[License] Invalid JSON (HTTP " + status + "): " + resp);
                 return handleOffline();
             }
 
@@ -112,48 +119,62 @@ public class LicenseManager {
             return false;
 
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[License] Failed to reach license server: " + e.getMessage());
+            plugin.getLogger().log(Level.SEVERE, "[License] Cannot reach license server: " + e.getMessage());
             return handleOffline();
         }
     }
 
     public boolean isValid() { return valid; }
 
-    // ── HWID: UUID lưu trong file, tạo 1 lần duy nhất ─────────────────────
+    /** Dùng cho command /authadmin hwid */
+    public String getHwidPublic() { return getHwid(); }
+
+    // ── HWID ──────────────────────────────────────────────────────────────
 
     private String getHwid() {
+        if (cachedHwid != null) return cachedHwid;
+
         File hwidFile = new File(plugin.getDataFolder(), "hwid.txt");
-        try {
-            if (hwidFile.exists()) {
-                String id = new String(Files.readAllBytes(hwidFile.toPath()), StandardCharsets.UTF_8).trim();
-                if (!id.isEmpty()) return id;
+
+        // Đọc file nếu tồn tại
+        if (hwidFile.exists()) {
+            try {
+                String h = Files.readString(hwidFile.toPath(), StandardCharsets.UTF_8).trim();
+                if (!h.isEmpty()) {
+                    cachedHwid = h;
+                    return cachedHwid;
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("[License] Failed to read hwid.txt: " + e.getMessage());
             }
-            // Tạo mới
-            String newId = "sa-" + UUID.randomUUID();
-            if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
-            Files.write(hwidFile.toPath(), newId.getBytes(StandardCharsets.UTF_8));
-            return newId;
-        } catch (IOException e) {
-            plugin.getLogger().warning("[License] Cannot read/write hwid.txt: " + e.getMessage());
-            // Fallback: port + world name (cũ)
-            int port = plugin.getServer().getPort();
-            String worldName = plugin.getServer().getWorlds().isEmpty()
-                    ? "world" : plugin.getServer().getWorlds().get(0).getName();
-            return "sa-" + port + "-" + worldName.hashCode();
         }
+
+        // Tạo mới
+        String generated = "sa-" + UUID.randomUUID();
+        try {
+            plugin.getDataFolder().mkdirs();
+            Files.writeString(hwidFile.toPath(), generated, StandardCharsets.UTF_8);
+            plugin.getLogger().info("[License] Created hwid.txt: " + generated);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[License] Cannot write hwid.txt, using fallback: " + e.getMessage());
+            int port = plugin.getServer().getPort();
+            String world = plugin.getServer().getWorlds().isEmpty()
+                    ? "world" : plugin.getServer().getWorlds().get(0).getName();
+            generated = "sa-" + port + "-" + Math.abs(world.hashCode());
+        }
+
+        cachedHwid = generated;
+        return cachedHwid;
     }
 
-    // ── Cache license ─────────────────────────────────────────────────────
-
-    private File getCacheFile() {
-        return new File(plugin.getDataFolder(), "license.cache");
-    }
+    // ── Cache ─────────────────────────────────────────────────────────────
 
     private boolean isCacheValid(String key, String hwid) {
-        File f = getCacheFile();
-        if (!f.exists()) return false;
         try {
-            String content = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            File f = new File(plugin.getDataFolder(), CACHE_FILE);
+            if (!f.exists()) return false;
+
+            String content = Files.readString(f.toPath(), StandardCharsets.UTF_8).trim();
             JsonObject json = JsonParser.parseString(content).getAsJsonObject();
 
             if (!json.has("key") || !json.get("key").getAsString().equals(key)) return false;
@@ -161,11 +182,9 @@ public class LicenseManager {
             if (!json.has("expires_at")) return false;
 
             long expiresAt = json.get("expires_at").getAsLong();
-            if (System.currentTimeMillis() > expiresAt) return false;
+            return System.currentTimeMillis() < expiresAt;
 
-            return true;
         } catch (Exception e) {
-            plugin.getLogger().warning("[License] Cache corrupted: " + e.getMessage());
             return false;
         }
     }
@@ -178,24 +197,27 @@ public class LicenseManager {
             json.addProperty("verified_at", System.currentTimeMillis());
             json.addProperty("expires_at", System.currentTimeMillis() + CACHE_TTL_MS);
 
-            if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
-            Files.write(getCacheFile().toPath(), GSON.toJson(json).getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            plugin.getLogger().warning("[License] Cannot write cache: " + e.getMessage());
+            File f = new File(plugin.getDataFolder(), CACHE_FILE);
+            Files.writeString(f.toPath(), GSON.toJson(json), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[License] Cannot save cache: " + e.getMessage());
         }
     }
 
-    // ── Offline handling ───────────────────────────────────────────────────
+    // ── Offline ───────────────────────────────────────────────────────────
 
     private boolean handleOffline() {
-        boolean strictMode = plugin.getConfig().getBoolean("license.strict", false);
-        if (strictMode) return false;
+        boolean strict = plugin.getConfig().getBoolean("license.strict", false);
+        if (strict) {
+            plugin.getLogger().severe("[License] Strict mode ON — plugin disabled.");
+            return false;
+        }
         plugin.getLogger().warning("[License] Strict mode OFF — starting anyway (offline).");
         valid = true;
         return true;
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────
 
     private static String readBody(HttpURLConnection conn) {
         try {
