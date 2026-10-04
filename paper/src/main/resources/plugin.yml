@@ -35,7 +35,7 @@ commands:
 
   authadmin:
     description: Admin commands for SecureAuth
-    usage: /authadmin <reset|resetfa|info|list|search|logs|backup> ...
+    usage: /authadmin <reset|resetfa|info|list|search|logs|backup|license> ...
     permission: secureauth.admin
     permission-message: "&cNo permission."
 
@@ -71,3 +71,6 @@ permissions:
   secureauth.cmd.console-exec:
     description: Allow /execute /sudo and console-level commands
     default: false
+  secureauth.license.bypass:
+    description: Bypass license premium checks
+    default: op
