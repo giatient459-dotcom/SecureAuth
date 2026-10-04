@@ -18,6 +18,7 @@ import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 
 /**
@@ -39,6 +40,7 @@ public final class PluginHttpServer {
 
     private final SecureAuthPlugin plugin;
     private HttpServer server;
+    private ExecutorService executor;
 
     public PluginHttpServer(SecureAuthPlugin plugin) {
         this.plugin = plugin;
@@ -57,10 +59,19 @@ public final class PluginHttpServer {
             server.createContext("/auth/discord-status", this::handleDiscordStatus);
             server.createContext("/auth/ip-confirm", this::handleIpConfirm);
             server.createContext("/auth/health", this::handleHealth);
-            server.setExecutor(Executors.newFixedThreadPool(2));
+            executor = Executors.newFixedThreadPool(2, runnable -> {
+                Thread thread = new Thread(runnable, "secureauth-http");
+                thread.setDaemon(true);
+                return thread;
+            });
+            server.setExecutor(executor);
             server.start();
             plugin.getLogger().info("[PluginHttpServer] Listening on 127.0.0.1:" + port);
         } catch (Exception e) {
+            if (executor != null) {
+                executor.shutdownNow();
+                executor = null;
+            }
             plugin.getLogger().log(Level.SEVERE, "[PluginHttpServer] Failed to start: " + e.getMessage(), e);
             server = null;
         }
@@ -71,6 +82,10 @@ public final class PluginHttpServer {
             server.stop(0);
             server = null;
             plugin.getLogger().info("[PluginHttpServer] Stopped.");
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
         }
     }
 
