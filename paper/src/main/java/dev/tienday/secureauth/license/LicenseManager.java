@@ -26,14 +26,23 @@ public final class LicenseManager {
 
     private final JavaPlugin plugin;
     private final Logger log;
-    private boolean premiumUnlocked;
-    private String lastReason = "not checked";
-    private String currentHwid;
-    private String customer;
+    private volatile boolean premiumUnlocked;
+    private volatile String lastReason = "not checked";
+    private volatile String currentHwid;
+    private volatile String customer;
 
     public LicenseManager(JavaPlugin plugin) {
         this.plugin = plugin;
         this.log = plugin.getLogger();
+    }
+
+    /**
+     * Runs the startup check away from the Paper main thread. The check performs
+     * network requests and reads/writes files, so calling it directly from
+     * JavaPlugin#onEnable would stall the server during a slow API response.
+     */
+    public void checkOnEnableAsync() {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, this::checkOnEnable);
     }
 
     public void checkOnEnable() {
@@ -67,7 +76,7 @@ public final class LicenseManager {
                 String ver = plugin.getDescription().getVersion();
                 OnlineLicenseClient.Result r = OnlineLicenseClient.verify(
                         apiBase, apiToken, key, currentHwid, "SecureAuth", ver, timeout, log);
-                if (r.ok()) {
+                if (r.ok() && r.premium()) {
                     premiumUnlocked = true;
                     customer = r.customer();
                     lastReason = "online OK — customer=" + (customer != null ? customer : "?");
@@ -75,7 +84,9 @@ public final class LicenseManager {
                     saveCache(true, customer, r.expiresAtMs());
                     return;
                 }
-                lastReason = "online fail: " + r.reason();
+                lastReason = r.ok()
+                        ? "online license valid but premium not enabled"
+                        : "online fail: " + r.reason();
                 log.warning("[License] Online: " + lastReason);
                 if (r.raw() != null && r.raw().length() < 200) {
                     log.warning("[License] Response: " + r.raw());
