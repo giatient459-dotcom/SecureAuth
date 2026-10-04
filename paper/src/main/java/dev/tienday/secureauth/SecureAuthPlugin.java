@@ -55,7 +55,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
         // Hybrid license (online Netlify + offline grace)
         licenseManager = new LicenseManager(this);
-        licenseManager.checkOnEnable();
+        // Network and filesystem work must not block the Paper main thread.
+        licenseManager.checkOnEnableAsync();
 
         // AuditLogger starts before DB — logs even if DB fails
         auditLogger = new AuditLogger(this);
