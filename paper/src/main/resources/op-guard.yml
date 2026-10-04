@@ -1,0 +1,7 @@
+# SecureAuth — op-guard.yml
+# Tách từ config.yml — sửa file này rồi /reload hoặc restart
+
+op-guard:
+  block-op-commands: true
+  block-bypass-grants: true
+

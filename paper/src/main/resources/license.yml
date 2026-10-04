@@ -1,0 +1,14 @@
+# SecureAuth — license.yml
+# Tách từ config.yml — sửa file này rồi /reload hoặc restart
+
+license:
+  enabled: true
+  online: true
+  strict: false
+  api-url: "https://secureauth-license.netlify.app"
+  api-token: "CHANGE_ME_PLUGIN_API_TOKEN"
+  timeout-ms: 5000
+  offline-grace-days: 7
+  key: ""
+  key-file: "license.key"
+  expected-jar-sha256: ""

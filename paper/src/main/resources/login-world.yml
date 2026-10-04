@@ -1,0 +1,15 @@
+# SecureAuth — login-world.yml
+# Tách từ config.yml — sửa file này rồi /reload hoặc restart
+
+login-world:
+  # Do /authsetspawn ghi (Lobby, limbo, world...). Để trống nếu chưa set.
+  world: ""
+  # Alias cũ (vẫn đọc nếu world trống)
+  end-world: ""
+  x: 0.5
+  y: 64.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+
+# Velocity integration (để trống nếu không dùng proxy)

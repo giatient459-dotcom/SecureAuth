@@ -1,0 +1,37 @@
+# SecureAuth — command-blocker.yml
+# Tách từ config.yml — sửa file này rồi /reload hoặc restart
+
+command-blocker:
+  enabled: true
+  # Tin nhắn hiện ra khi bị chặn (giả vờ như command không tồn tại)
+  message: "&cUnknown command. Type /help for help."
+  # Danh sách command bị chặn với non-OP (không cần ghi dấu /)
+  blocked:
+    - "gamemode"
+    - "gm"
+    - "tp"
+    - "tphere"
+    - "teleport"
+    - "give"
+    - "enchant"
+    - "effect"
+    - "kill"
+    - "summon"
+    - "setblock"
+    - "fill"
+    - "time"
+    - "weather"
+    - "difficulty"
+    - "spawnpoint"
+    - "xp"
+    - "experience"
+    - "attribute"
+    - "ban"
+    - "ban-ip"
+    - "kick"
+    - "pardon"
+    - "pardon-ip"
+    - "whitelist"
+
+# Nơi giữ player CHƯA login (AuthMe-style).
+# Đứng đúng chỗ → /authsetspawn (hoặc /setlobby). World rỗng = không TP khi join.
