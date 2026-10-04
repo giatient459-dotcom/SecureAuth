@@ -17,6 +17,21 @@ security:
   argon2-iterations: 3
   argon2-memory-kb: 65536
   argon2-parallelism: 4
+  # Nhớ IP sau login thành công — bỏ qua 2FA trong X giờ nếu cùng IP
+  ip-session:
+    enabled: true
+    hours: 72
+    # IP mới → bot Discord gửi nút Xác nhận / Từ chối (cần bot hỗ trợ endpoint)
+    confirm-buttons: true
+    confirm-expiry-seconds: 300
+  # Yêu cầu mật khẩu có chữ + số (bật nếu muốn chặt hơn)
+  password:
+    min-length: 8
+    require-mixed: false
+  # Captcha toán đơn giản khi /register (a+b=?)
+  register-captcha: false
+  # Grace period sau login (giây) — tránh kick/teleport race khi lag
+  login-grace-seconds: 3
 
 discord-bot:
   api-url: "http://127.0.0.1:8765"
@@ -36,6 +51,8 @@ messages:
   already-registered: "&cTên này đã được đăng ký."
   password-mismatch: "&cHai mật khẩu không khớp."
   password-too-short: "&cMật khẩu phải có ít nhất 8 ký tự."
+  # /changepassword (thêm cho fix pack)
+  password-changed: "&aĐổi mật khẩu thành công!"
   too-many-attempts: "&cQuá nhiều lần thử. Thử lại sau {seconds} giây."
   session-expired: "&cPhiên đăng nhập hết hạn. Vui lòng đăng nhập lại."
   two-fa-required: "&eMã 2FA đã được gửi qua Discord DM. Dùng /login <mã>."
@@ -51,6 +68,16 @@ messages:
   kick-2fa-dm-failed: "Không gửi được mã 2FA qua Discord DM.\nKiểm tra cài đặt DM của bạn và thử lại."
   register-rate-limited: "&cBạn đã đăng ký quá nhiều lần. Thử lại sau."
   link-rate-limited: "&cBạn đã thử /link quá nhiều lần. Thử lại sau."
+  # Giới hạn đăng ký theo IP (thêm cho fix pack)
+  register-ip-limit: "&cIP này đã đạt giới hạn số tài khoản đăng ký."
+  password-weak: "&cMật khẩu phải có ít nhất {min} ký tự, gồm chữ và số."
+  captcha-required: "&eCaptcha: {a} + {b} = ?  Dùng /register <pass> <confirm> <kết_quả>"
+  captcha-wrong: "&cSai captcha. Thử lại."
+  ip-confirm-sent: "&eIP mới (&f{ip}&e). Mở Discord DM → bấm &aXác nhận &ehoặc &cTừ chối&e."
+  ip-confirm-waiting: "&eĐang chờ xác nhận IP trên Discord..."
+  ip-confirm-approved: "&aĐã xác nhận IP — đăng nhập thành công!"
+  ip-session-skip-2fa: "&aNhận diện IP tin cậy — bỏ qua 2FA."
+  force-2fa-required: "&eTài khoản staff bắt buộc 2FA. Hãy /link Discord trước."
 
 op-guard:
   block-op-commands: true
@@ -95,11 +122,13 @@ command-blocker:
     - "pardon-ip"
     - "whitelist"
 
+# Nơi giữ player CHƯA login (AuthMe-style).
+# Đứng đúng chỗ → /authsetspawn (hoặc /setlobby). World rỗng = không TP khi join.
 login-world:
-  # Tên world The End để tp player chưa login vào đây
-  # Mặc định Paper: world_the_end
-  end-world: "world_the_end"
-  # Toạ độ spawn trong End (mặc định: 0 64 0 — giữa đảo End)
+  # Do /authsetspawn ghi (Lobby, limbo, world...). Để trống nếu chưa set.
+  world: ""
+  # Alias cũ (vẫn đọc nếu world trống)
+  end-world: ""
   x: 0.5
   y: 64.0
   z: 0.5
@@ -114,15 +143,27 @@ velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   # Phải giống backend-secret trong config Velocity
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
-  # End
-  password-changed: "&aĐổi mật khẩu thành công!"
-  register-ip-limit: "&cIP của bạn đã đạt giới hạn số tài khoản."
 
+
+# Sao lưu SQLite tự động (0 = tắt lịch, vẫn dùng /authadmin backup)
+backup:
+  interval-hours: 24
+  keep-count: 7
+
+# Cảnh báo Discord webhook khi lockout / admin action
+alerts:
+  webhook-enabled: false
+  discord-webhook-url: ""
+
+# === Hybrid License (online Netlify) ===
 license:
-  # License key từ dashboard. Để trống = chạy không có license (unlicensed mode).
-  key: ""
-  # URL của license server (Netlify/Vercel)
-  api-url: "https://your-license-server.netlify.app"
-  # strict: true = plugin tắt nếu không reach được server
-  # strict: false = cho qua nếu server offline (default)
+  enabled: true
+  online: true
   strict: false
+  api-url: "https://secureauth-license.netlify.app"
+  api-token: "CHANGE_ME_PLUGIN_API_TOKEN"
+  timeout-ms: 5000
+  offline-grace-days: 7
+  key: ""
+  key-file: "license.key"
+  expected-jar-sha256: ""
