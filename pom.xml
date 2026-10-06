@@ -41,51 +41,38 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Paper API -->
             <dependency>
                 <groupId>io.papermc.paper</groupId>
                 <artifactId>paper-api</artifactId>
                 <version>${paper.version}</version>
                 <scope>provided</scope>
             </dependency>
-
-            <!-- Velocity API -->
             <dependency>
                 <groupId>com.velocitypowered</groupId>
                 <artifactId>velocity-api</artifactId>
                 <version>${velocity.version}</version>
                 <scope>provided</scope>
             </dependency>
-
-            <!-- Gson (JSON) -->
             <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
                 <version>${gson.version}</version>
             </dependency>
-
-            <!-- SQLite JDBC -->
             <dependency>
                 <groupId>org.xerial</groupId>
                 <artifactId>sqlite-jdbc</artifactId>
                 <version>${sqlite.version}</version>
             </dependency>
-
-            <!-- BouncyCastle (Argon2) -->
             <dependency>
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcprov-jdk18on</artifactId>
                 <version>${bouncycastle.version}</version>
             </dependency>
-
-            <!-- bStats Bukkit -->
             <dependency>
                 <groupId>org.bstats</groupId>
                 <artifactId>bstats-bukkit</artifactId>
                 <version>${bstats.version}</version>
             </dependency>
-
-            <!-- bStats Velocity -->
             <dependency>
                 <groupId>org.bstats</groupId>
                 <artifactId>bstats-velocity</artifactId>
@@ -106,13 +93,11 @@
                         <encoding>UTF-8</encoding>
                     </configuration>
                 </plugin>
-
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
                     <version>3.6.0</version>
                 </plugin>
-
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
