@@ -1,8 +1,0 @@
-# SecureAuth — config chính
-# Các mục chi tiết nằm ở file riêng trong cùng thư mục:
-#   security.yml, messages.yml, discord-bot.yml, license.yml,
-#   login-world.yml, velocity.yml, backup.yml, alerts.yml,
-#   op-guard.yml, dangerous-commands.yml, command-blocker.yml
-# Plugin tự merge khi load. Chỉ cần restart hoặc reload config.
-
-# Giữ file này (có thể để trống phần dưới) để Bukkit saveDefaultConfig hoạt động.

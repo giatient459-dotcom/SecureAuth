@@ -1,8 +1,0 @@
-# SecureAuth — backup.yml
-# Tách từ config.yml — sửa file này rồi /reload hoặc restart
-
-backup:
-  interval-hours: 24
-  keep-count: 7
-
-# Cảnh báo Discord webhook khi lockout / admin action

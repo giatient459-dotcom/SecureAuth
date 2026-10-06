@@ -1,8 +1,0 @@
-# SecureAuth — alerts.yml
-# Tách từ config.yml — sửa file này rồi /reload hoặc restart
-
-alerts:
-  webhook-enabled: false
-  discord-webhook-url: ""
-
-# === Hybrid License (online Netlify) ===
