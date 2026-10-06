@@ -18,9 +18,9 @@ import dev.tienday.secureauth.util.AuditLogger;
 import dev.tienday.secureauth.util.ConfigManager;
 import dev.tienday.secureauth.util.BackupManager;
 import dev.tienday.secureauth.util.IpSessionStore;
+import dev.tienday.secureauth.util.MetricsManager;
 import dev.tienday.secureauth.util.PluginHttpServer;
 import dev.tienday.secureauth.util.SessionManager;
-import dev.tienday.secureauth.license.LicenseManager;
 import dev.tienday.secureauth.util.WebhookNotifier;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.PluginCommand;
@@ -42,7 +42,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private WebhookNotifier webhookNotifier;
     private BackupManager backupManager;
     private IpSessionStore ipSessionStore;
-    private LicenseManager licenseManager;
+    private MetricsManager metricsManager;
 
     @Override
     public void onEnable() {
@@ -53,12 +53,6 @@ public final class SecureAuthPlugin extends JavaPlugin {
         configManager.loadAll();
         configManager.validate();
 
-        // Hybrid license (online Netlify + offline grace)
-        licenseManager = new LicenseManager(this);
-        // Network and filesystem work must not block the Paper main thread.
-        licenseManager.checkOnEnableAsync();
-
-        // AuditLogger starts before DB — logs even if DB fails
         auditLogger = new AuditLogger(this);
         auditLogger.start();
 
@@ -79,15 +73,14 @@ public final class SecureAuthPlugin extends JavaPlugin {
         backupManager    = new BackupManager(this);
         ipSessionStore   = new IpSessionStore(this);
 
-        registerCommand("login",        new LoginCommand(this));
-        registerCommand("register",     new RegisterCommand(this));
-        registerCommand("link",         new LinkCommand(this));
-        registerCommand("authadmin",    new AuthAdminCommand(this));
-        registerCommand("authsetspawn", new SetSpawnCommand(this));
-        registerCommand("uuid",            new UUIDCommand(this));
-        registerCommand("changepassword",   new ChangePasswordCommand(this));
+        registerCommand("login",          new LoginCommand(this));
+        registerCommand("register",       new RegisterCommand(this));
+        registerCommand("link",           new LinkCommand(this));
+        registerCommand("authadmin",      new AuthAdminCommand(this));
+        registerCommand("authsetspawn",   new SetSpawnCommand(this));
+        registerCommand("uuid",           new UUIDCommand(this));
+        registerCommand("changepassword", new ChangePasswordCommand(this));
 
-        // Order: AuthListener first (blocks unauthed), then guards
         getServer().getPluginManager().registerEvents(new AuthListener(this), this);
         getServer().getPluginManager().registerEvents(new OPGuardListener(this), this);
         getServer().getPluginManager().registerEvents(new DangerousCommandListener(this), this);
@@ -99,6 +92,11 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
         pluginHttpServer = new PluginHttpServer(this);
         pluginHttpServer.start();
+
+        if (getConfig().getBoolean("metrics.enabled", true)) {
+            metricsManager = new MetricsManager(this);
+            metricsManager.start();
+        }
 
         auditLogger.logSystem("STARTUP", "SecureAuth enabled — version " + getDescription().getVersion());
         getLogger().info("SecureAuth enabled successfully.");
@@ -116,13 +114,14 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (sessionManager  != null) sessionManager.shutdown();
-        if (rateLimiter     != null) rateLimiter.shutdown();
-        if (backupManager   != null) backupManager.shutdown();
-        if (ipSessionStore  != null) ipSessionStore.shutdown();
+        if (sessionManager   != null) sessionManager.shutdown();
+        if (rateLimiter      != null) rateLimiter.shutdown();
+        if (backupManager    != null) backupManager.shutdown();
+        if (ipSessionStore   != null) ipSessionStore.shutdown();
+        if (metricsManager   != null) metricsManager.shutdown();
         if (pluginHttpServer != null) pluginHttpServer.stop();
-        if (databaseManager != null) databaseManager.close();
-        if (auditLogger     != null) {
+        if (databaseManager  != null) databaseManager.close();
+        if (auditLogger      != null) {
             auditLogger.logSystem("SHUTDOWN", "SecureAuth disabled");
             auditLogger.stop();
         }
@@ -130,15 +129,14 @@ public final class SecureAuthPlugin extends JavaPlugin {
         getLogger().info("SecureAuth disabled.");
     }
 
-    public static SecureAuthPlugin getInstance()      { return instance; }
-    public ConfigManager getConfigManager()           { return configManager; }
-    public DatabaseManager getDatabaseManager()       { return databaseManager; }
-    public SessionManager getSessionManager()         { return sessionManager; }
-    public RateLimiter getRateLimiter()               { return rateLimiter; }
-    public TwoFactorManager getTwoFactorManager()     { return twoFactorManager; }
-    public AuditLogger getAuditLogger()               { return auditLogger; }
-    public WebhookNotifier getWebhookNotifier()       { return webhookNotifier; }
-    public BackupManager getBackupManager()           { return backupManager; }
-    public IpSessionStore getIpSessionStore()         { return ipSessionStore; }
-    public LicenseManager getLicenseManager()             { return licenseManager; }
+    public static SecureAuthPlugin getInstance()  { return instance; }
+    public ConfigManager getConfigManager()       { return configManager; }
+    public DatabaseManager getDatabaseManager()   { return databaseManager; }
+    public SessionManager getSessionManager()     { return sessionManager; }
+    public RateLimiter getRateLimiter()           { return rateLimiter; }
+    public TwoFactorManager getTwoFactorManager() { return twoFactorManager; }
+    public AuditLogger getAuditLogger()           { return auditLogger; }
+    public WebhookNotifier getWebhookNotifier()   { return webhookNotifier; }
+    public BackupManager getBackupManager()       { return backupManager; }
+    public IpSessionStore getIpSessionStore()     { return ipSessionStore; }
 }
