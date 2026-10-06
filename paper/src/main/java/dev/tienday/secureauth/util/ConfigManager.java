@@ -3,10 +3,7 @@ package dev.tienday.secureauth.util;
 import dev.tienday.secureauth.SecureAuthPlugin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 
-import java.io.File;
 import java.util.logging.Level;
 
 public class ConfigManager {
@@ -21,68 +18,18 @@ public class ConfigManager {
         this.plugin = plugin;
     }
 
-    /** Các file config tách (resources + data folder). */
-    public static final String[] SPLIT_FILES = {
-            "security.yml",
-            "messages.yml",
-            "discord-bot.yml",
-            "license.yml",
-            "login-world.yml",
-            "velocity.yml",
-            "backup.yml",
-            "alerts.yml",
-            "op-guard.yml",
-            "dangerous-commands.yml",
-            "command-blocker.yml"
-    };
-
-    /**
-     * saveDefault từng file + merge top-level key vào plugin.getConfig().
-     * Gọi sau saveDefaultConfig() trên main plugin.
-     */
+    /** Load config.yml (single file). */
     public void loadAll() {
         plugin.saveDefaultConfig();
-        for (String name : SPLIT_FILES) {
-            File dest = new File(plugin.getDataFolder(), name);
-            if (!dest.exists()) {
-                try {
-                    plugin.saveResource(name, false);
-                } catch (IllegalArgumentException ex) {
-                    plugin.getLogger().warning("Missing resource: " + name);
-                }
-            }
-        }
-        FileConfiguration pc = plugin.getConfig();
-        for (String name : SPLIT_FILES) {
-            File dest = new File(plugin.getDataFolder(), name);
-            if (!dest.isFile()) continue;
-            YamlConfiguration part = YamlConfiguration.loadConfiguration(dest);
-            for (String key : part.getKeys(false)) {
-                pc.set(key, part.get(key));
-            }
-        }
-        plugin.getLogger().info("Config loaded (split yml merged).");
+        plugin.reloadConfig();
+        plugin.getLogger().info("Config loaded (config.yml).");
     }
 
-    /** Ghi một section ra file riêng (vd login-world sau /authsetspawn). */
+    /** @deprecated single config — no-op, use plugin.saveConfig() */
     public void saveSectionToFile(String sectionKey, String fileName) {
-        try {
-            File dest = new File(plugin.getDataFolder(), fileName);
-            YamlConfiguration out = new YamlConfiguration();
-            Object val = plugin.getConfig().get(sectionKey);
-            out.set(sectionKey, val);
-            out.save(dest);
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Cannot save " + fileName, e);
-        }
+        plugin.saveConfig();
     }
 
-
-    /**
-     * Called once on enable. Warns about weak/missing secrets.
-     * Argon2 getters already clamp values, so we check raw config here
-     * for logging purposes only.
-     */
     public void validate() {
         int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
         int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
