@@ -1,7 +1,7 @@
 name: SecureAuth
 version: '${project.version}'
 main: dev.tienday.secureauth.SecureAuthPlugin
-api-version: '1.20'
+api-version: '1.21'
 description: Secure login system with 2FA via Discord
 author: TienDay
 load: POSTWORLD
