@@ -18,7 +18,6 @@ import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 
 /**
@@ -40,7 +39,6 @@ public final class PluginHttpServer {
 
     private final SecureAuthPlugin plugin;
     private HttpServer server;
-    private ExecutorService executor;
 
     public PluginHttpServer(SecureAuthPlugin plugin) {
         this.plugin = plugin;
@@ -59,19 +57,10 @@ public final class PluginHttpServer {
             server.createContext("/auth/discord-status", this::handleDiscordStatus);
             server.createContext("/auth/ip-confirm", this::handleIpConfirm);
             server.createContext("/auth/health", this::handleHealth);
-            executor = Executors.newFixedThreadPool(2, runnable -> {
-                Thread thread = new Thread(runnable, "secureauth-http");
-                thread.setDaemon(true);
-                return thread;
-            });
-            server.setExecutor(executor);
+            server.setExecutor(Executors.newFixedThreadPool(2));
             server.start();
             plugin.getLogger().info("[PluginHttpServer] Listening on 127.0.0.1:" + port);
         } catch (Exception e) {
-            if (executor != null) {
-                executor.shutdownNow();
-                executor = null;
-            }
             plugin.getLogger().log(Level.SEVERE, "[PluginHttpServer] Failed to start: " + e.getMessage(), e);
             server = null;
         }
@@ -82,10 +71,6 @@ public final class PluginHttpServer {
             server.stop(0);
             server = null;
             plugin.getLogger().info("[PluginHttpServer] Stopped.");
-        }
-        if (executor != null) {
-            executor.shutdownNow();
-            executor = null;
         }
     }
 
@@ -285,19 +270,27 @@ public final class PluginHttpServer {
 
         String auth = ex.getRequestHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
-            respond(ex, 401, "{\"error\":\"unauthorized\"}");
+            respond(ex, 401, "{"error":"unauthorized"}");
             return false;
         }
 
         String provided = auth.substring(7).trim();
-        boolean ok = MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8),
-                provided.getBytes(StandardCharsets.UTF_8));
-        if (!ok) {
-            respond(ex, 401, "{\"error\":\"unauthorized\"}");
+        if (!constantTimeEquals(expected, provided)) {
+            respond(ex, 401, "{"error":"unauthorized"}");
             return false;
         }
         return true;
+    }
+
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) return false;
+        byte[] x = a.getBytes(StandardCharsets.UTF_8);
+        byte[] y = b.getBytes(StandardCharsets.UTF_8);
+        if (x.length != y.length) {
+            MessageDigest.isEqual(x, x);
+            return false;
+        }
+        return MessageDigest.isEqual(x, y);
     }
 
     private static String readBody(HttpExchange ex) throws IOException {
