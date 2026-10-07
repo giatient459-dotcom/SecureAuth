@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag version (e.g. v1.0.2) — chỉ dùng khi chạy tay; nên push tag thật'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Build
+        run: mvn -B package --no-transfer-progress
+
+      - name: Resolve version / paths
+        id: ver
+        run: |
+          set -euo pipefail
+          PAPER_JAR=$(ls paper/target/SecureAuth-*.jar | grep -v original | head -1)
+          VEL_JAR=$(ls velocity/target/SecureAuthVelocity-*.jar | grep -v original | head -1)
+          test -f "$PAPER_JAR"
+          test -f "$VEL_JAR"
+          echo "paper_jar=$PAPER_JAR" >> "$GITHUB_OUTPUT"
+          echo "vel_jar=$VEL_JAR" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+            if [ -z "$TAG" ]; then
+              TAG="v1.0.2-snapshot-${GITHUB_SHA::7}"
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Paper=$PAPER_JAR Velocity=$VEL_JAR Tag=$TAG"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureAuth-release-jars
+          path: |
+            ${{ steps.ver.outputs.paper_jar }}
+            ${{ steps.ver.outputs.vel_jar }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: SecureAuth ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.ver.outputs.paper_jar }}
+            ${{ steps.ver.outputs.vel_jar }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
