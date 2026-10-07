@@ -1,0 +1,79 @@
+name: Bug report
+description: Báo lỗi plugin SecureAuth (Paper / Velocity)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã báo lỗi. Điền đủ thông tin giúp fix nhanh hơn.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Thành phần
+      description: Lỗi xảy ra ở đâu?
+      options:
+        - Paper plugin
+        - Velocity plugin
+        - Discord bot / HTTP API
+        - Không chắc
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version plugin
+      description: Ví dụ 1.0.2 (trong /plugins hoặc plugin.yml)
+      placeholder: "1.0.2"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server / proxy
+      description: Paper/Purpur version, Velocity version (nếu có)
+      placeholder: "Paper 1.21.4, Velocity 3.4.0"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Cách tái hiện
+      description: Các bước để gặp lỗi
+      placeholder: |
+        1. Join server
+        2. /login ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Kỳ vọng
+      placeholder: Điều đúng ra phải xảy ra
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Thực tế
+      placeholder: Điều đang xảy ra (kèm screenshot nếu có)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / stack trace
+      description: Dán log console (che secret, token, webhook)
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Đã đọc README / config.yml
+          required: true
+        - label: Đã thử restart server sau khi đổi config
+          required: false
+        - label: Không dán API secret / webhook URL vào issue
+          required: true
