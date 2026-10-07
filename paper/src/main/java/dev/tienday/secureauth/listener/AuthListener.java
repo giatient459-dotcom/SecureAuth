@@ -1,6 +1,8 @@
 package dev.tienday.secureauth.listener;
 
 import dev.tienday.secureauth.SecureAuthPlugin;
+import dev.tienday.secureauth.command.LoginCommand;
+import dev.tienday.secureauth.security.PremiumChecker;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -89,6 +91,14 @@ public class AuthListener implements Listener {
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
                         if (plugin.getSessionManager().isAuthenticated(uuid)) return;
+                        // Premium auto-login (opt-in): UUID online-mode + đã register
+                        if (registered
+                                && plugin.getConfigManager().isPremiumAutoLoginEnabled()
+                                && PremiumChecker.isPremium(player)) {
+                            LoginCommand login = new LoginCommand(plugin);
+                            login.completeLoginFromExternal(player, "premium");
+                            return;
+                        }
                         if (registered) {
                             player.sendMessage(plugin.getConfigManager().getMessage("not-logged-in"));
                         } else {
