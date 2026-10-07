@@ -270,13 +270,13 @@ public final class PluginHttpServer {
 
         String auth = ex.getRequestHeaders().getFirst("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
-            respond(ex, 401, "{"error":"unauthorized"}");
+            respond(ex, 401, "{\"error\":\"unauthorized\"}");
             return false;
         }
 
         String provided = auth.substring(7).trim();
         if (!constantTimeEquals(expected, provided)) {
-            respond(ex, 401, "{"error":"unauthorized"}");
+            respond(ex, 401, "{\"error\":\"unauthorized\"}");
             return false;
         }
         return true;
