@@ -185,12 +185,11 @@ public class DatabaseManager {
         if (connection == null || connection.isClosed()) {
             File dbFile = new File(plugin.getDataFolder(), "secureauth.db");
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            try (Statement st = connection.createStatement()) {
+            try (java.sql.Statement st = connection.createStatement()) {
                 st.execute("PRAGMA journal_mode=WAL");
-                st.execute("PRAGMA foreign_keys=ON");
                 st.execute("PRAGMA busy_timeout=5000");
+                st.execute("PRAGMA foreign_keys=ON");
             }
-            plugin.getLogger().warning("[DB] Reconnected to SQLite.");
         }
         return connection;
     }
