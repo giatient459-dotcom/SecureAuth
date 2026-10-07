@@ -1,330 +1,254 @@
 package dev.tienday.secureauth.util;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import dev.tienday.secureauth.SecureAuthPlugin;
-import dev.tienday.secureauth.database.PlayerData;
-import dev.tienday.secureauth.security.PasswordUtil;
-import dev.tienday.secureauth.util.TitleUtil;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.Executors;
 import java.util.logging.Level;
 
-/**
- * HTTP server nội bộ (127.0.0.1) để Discord bot gọi vào.
- *
- * POST /auth/verify-credentials
- *   Authorization: Bearer &lt;api-secret&gt;
- *   {"username":"...","password":"..."}  hoặc  {"uuid":"...","password":"..."}
- *   → {"ok":true,"uuid":"...","username":"..."} | 401
- *
- * POST /auth/discord-status
- *   Authorization: Bearer &lt;api-secret&gt;
- *   {"discord_id":"..."}  hoặc  {"uuid":"..."}
- *   → {"linked":bool,"uuid":"...","username":"...","online":bool,"two_fa":bool}
- *
- * GET  /auth/health → {"ok":true}
- */
-public final class PluginHttpServer {
+public class ConfigManager {
+
+    public static final int ARGON2_MIN_MEMORY_KB    = 19 * 1024;
+    public static final int ARGON2_MIN_ITERATIONS   = 2;
+    public static final int ARGON2_MIN_PARALLELISM  = 1;
 
     private final SecureAuthPlugin plugin;
-    private HttpServer server;
 
-    public PluginHttpServer(SecureAuthPlugin plugin) {
+    public ConfigManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public void start() {
-        int port = plugin.getConfig().getInt("discord-bot.plugin-http-port", 20334);
-        if (port <= 0 || port > 65535) {
-            plugin.getLogger().warning("[PluginHttpServer] Invalid port " + port + " — HTTP disabled.");
-            return;
-        }
-
-        try {
-            server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-            server.createContext("/auth/verify-credentials", this::handleVerifyCredentials);
-            server.createContext("/auth/discord-status", this::handleDiscordStatus);
-            server.createContext("/auth/ip-confirm", this::handleIpConfirm);
-            server.createContext("/auth/health", this::handleHealth);
-            server.setExecutor(Executors.newFixedThreadPool(2));
-            server.start();
-            plugin.getLogger().info("[PluginHttpServer] Listening on 127.0.0.1:" + port);
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "[PluginHttpServer] Failed to start: " + e.getMessage(), e);
-            server = null;
-        }
+    /** Load config.yml (single file). */
+    public void loadAll() {
+        plugin.saveDefaultConfig();
+        plugin.reloadConfig();
+        plugin.getLogger().info("Config loaded (config.yml).");
     }
 
-    public void stop() {
-        if (server != null) {
-            server.stop(0);
-            server = null;
-            plugin.getLogger().info("[PluginHttpServer] Stopped.");
-        }
+    /** @deprecated single config — no-op, use plugin.saveConfig() */
+    public void saveSectionToFile(String sectionKey, String fileName) {
+        plugin.saveConfig();
     }
 
-    // ── /auth/health ──────────────────────────────────────────────────────────
+    public void validate() {
+        int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
+        int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
+        int rawPar = plugin.getConfig().getInt("security.argon2-parallelism", 4);
 
-    private void handleHealth(HttpExchange ex) throws IOException {
-        if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
-            respond(ex, 405, "{\"error\":\"method_not_allowed\"}");
-            return;
+        if (rawMem < ARGON2_MIN_MEMORY_KB) {
+            plugin.getLogger().warning("security.argon2-memory-kb is below OWASP minimum ("
+                    + ARGON2_MIN_MEMORY_KB + "); value will be clamped at runtime.");
         }
-        respond(ex, 200, "{\"ok\":true}");
+        if (rawIt < ARGON2_MIN_ITERATIONS) {
+            plugin.getLogger().warning("security.argon2-iterations is below minimum ("
+                    + ARGON2_MIN_ITERATIONS + "); value will be clamped at runtime.");
+        }
+        if (rawPar < ARGON2_MIN_PARALLELISM) {
+            plugin.getLogger().warning("security.argon2-parallelism is below minimum ("
+                    + ARGON2_MIN_PARALLELISM + "); value will be clamped at runtime.");
+        }
+
+        String secret = getBotApiSecret();
+        if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)) {
+            plugin.getLogger().log(Level.WARNING,
+                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure.");
+        }
+
     }
 
-    // ── /auth/verify-credentials ──────────────────────────────────────────────
+    // ---- Database: SQLite — no config needed, file auto-created ----
 
-    private void handleVerifyCredentials(HttpExchange ex) throws IOException {
-        if (!checkMethod(ex, "POST")) return;
-        if (!checkAuth(ex)) return;
+    // ---- Security ----
 
-        String body = readBody(ex);
-        String username = extractJson(body, "username");
-        String uuidStr  = extractJson(body, "uuid");
-        String password = extractJson(body, "password");
-
-        if (password == null || password.isBlank()) {
-            respond(ex, 400, "{\"error\":\"missing_password\"}");
-            return;
-        }
-
-        Optional<PlayerData> opt;
-        if (uuidStr != null && !uuidStr.isBlank()) {
-            opt = plugin.getDatabaseManager().getPlayer(uuidStr);
-        } else if (username != null && !username.isBlank()) {
-            opt = plugin.getDatabaseManager().getPlayerByUsername(username);
-        } else {
-            respond(ex, 400, "{\"error\":\"missing_identity\"}");
-            return;
-        }
-
-        if (opt.isEmpty()) {
-            // Constant-time-ish: still run a dummy verify? skip for simplicity, return 401
-            respond(ex, 401, "{\"error\":\"invalid_credentials\"}");
-            return;
-        }
-
-        PlayerData data = opt.get();
-        boolean ok = PasswordUtil.verify(password, data.getPasswordHash());
-        if (!ok) {
-            respond(ex, 401, "{\"error\":\"invalid_credentials\"}");
-            return;
-        }
-
-        String json = String.format(
-                "{\"ok\":true,\"uuid\":\"%s\",\"username\":\"%s\"}",
-                escape(data.getUuid()), escape(data.getUsername()));
-        respond(ex, 200, json);
+    public int getSessionTimeout() {
+        return Math.max(30, plugin.getConfig().getInt("security.session-timeout", 300));
     }
 
-    // ── /auth/discord-status ──────────────────────────────────────────────────
 
-    private void handleDiscordStatus(HttpExchange ex) throws IOException {
-        if (!checkMethod(ex, "POST")) return;
-        if (!checkAuth(ex)) return;
-
-        String body = readBody(ex);
-        String discordId = extractJson(body, "discord_id");
-        String uuidStr   = extractJson(body, "uuid");
-
-        Optional<PlayerData> opt;
-        if (discordId != null && !discordId.isBlank()) {
-            opt = plugin.getDatabaseManager().getPlayerByDiscordId(discordId);
-        } else if (uuidStr != null && !uuidStr.isBlank()) {
-            opt = plugin.getDatabaseManager().getPlayer(uuidStr);
-        } else {
-            respond(ex, 400, "{\"error\":\"missing_identity\"}");
-            return;
-        }
-
-        if (opt.isEmpty()) {
-            respond(ex, 200, "{\"linked\":false,\"online\":false}");
-            return;
-        }
-
-        PlayerData data = opt.get();
-        boolean linked = data.getDiscordId() != null && !data.getDiscordId().isBlank();
-        boolean online = false;
-        try {
-            UUID uuid = UUID.fromString(data.getUuid());
-            // Player lookup must not run off the main thread
-            if (Bukkit.isPrimaryThread()) {
-                Player p = Bukkit.getPlayer(uuid);
-                online = p != null && p.isOnline();
-            } else {
-                final boolean[] holder = {false};
-                final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    try {
-                        Player p = Bukkit.getPlayer(uuid);
-                        holder[0] = p != null && p.isOnline();
-                    } finally {
-                        latch.countDown();
-                    }
-                });
-                try {
-                    latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-                online = holder[0];
-            }
-        } catch (IllegalArgumentException ignored) {}
-
-        String json = String.format(
-                "{\"linked\":%b,\"uuid\":\"%s\",\"username\":\"%s\",\"online\":%b,\"two_fa\":%b,\"discord_id\":%s}",
-                linked,
-                escape(data.getUuid()),
-                escape(data.getUsername()),
-                online,
-                data.isTwoFaEnabled(),
-                linked ? "\"" + escape(data.getDiscordId()) + "\"" : "null");
-        respond(ex, 200, json);
-    }
+    // ---- Login lobby (AuthMe-style) ----
 
     /**
-     * POST /auth/ip-confirm
-     * Body: {"token":"...","action":"approve"|"deny"}
-     * Bot gọi khi user bấm nút Xác nhận / Từ chối.
+     * Điểm giữ player chưa login. null nếu chưa /authsetspawn (world trống).
      */
-    private void handleIpConfirm(HttpExchange ex) throws IOException {
-        if (!checkMethod(ex, "POST")) return;
-        if (!checkAuth(ex)) return;
-
-        String body = readBody(ex);
-        String token  = extractJson(body, "token");
-        String action = extractJson(body, "action");
-        if (token == null || token.isBlank() || action == null || action.isBlank()) {
-            respond(ex, 400, "{\"error\":\"missing_token_or_action\"}");
-            return;
+    public org.bukkit.Location getLoginSpawnLocation() {
+        String worldName = plugin.getConfig().getString("login-world.world", "");
+        if (worldName == null || worldName.isBlank()) {
+            worldName = plugin.getConfig().getString("login-world.end-world", "");
         }
-
-        var resolved = plugin.getTwoFactorManager().resolveIpConfirm(token, action);
-        String uuidStr = resolved.uuid();
-        switch (resolved.result()) {
-            case APPROVED -> {
-                if (uuidStr != null) {
-                    try {
-                        UUID uuid = UUID.fromString(uuidStr);
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            Player p = Bukkit.getPlayer(uuid);
-                            if (p != null && p.isOnline()
-                                    && !plugin.getSessionManager().isAuthenticated(uuid)) {
-                                new dev.tienday.secureauth.command.LoginCommand(plugin)
-                                        .completeLoginFromExternal(p, "ip-confirm-approved");
-                            }
-                        });
-                    } catch (IllegalArgumentException ignored) {}
-                }
-                respond(ex, 200, "{\"ok\":true,\"result\":\"approved\"}");
-            }
-            case DENIED -> {
-                if (uuidStr != null) {
-                    try {
-                        UUID uuid = UUID.fromString(uuidStr);
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            Player p = Bukkit.getPlayer(uuid);
-                            if (p != null && p.isOnline()) {
-                                plugin.getSessionManager().invalidate(uuid);
-                                TitleUtil.loginDenied(p);
-                                p.kick(plugin.getConfigManager().getMessageNoPrefix("kick-ip-denied"));
-                            }
-                        });
-                    } catch (IllegalArgumentException ignored) {}
-                }
-                respond(ex, 200, "{\"ok\":true,\"result\":\"denied\"}");
-            }
-            case EXPIRED -> respond(ex, 410, "{\"error\":\"expired\"}");
-            case NOT_FOUND -> respond(ex, 404, "{\"error\":\"not_found\"}");
+        if (worldName == null || worldName.isBlank()) {
+            return null;
         }
+        org.bukkit.World world = plugin.getServer().getWorld(worldName);
+        if (world == null) {
+            plugin.getLogger().warning("[SecureAuth] Login spawn world '" + worldName
+                    + "' chưa load. Dùng /authsetspawn trong world đó, hoặc load world.");
+            return null;
+        }
+        double x = plugin.getConfig().getDouble("login-world.x", world.getSpawnLocation().getX());
+        double y = plugin.getConfig().getDouble("login-world.y", world.getSpawnLocation().getY());
+        double z = plugin.getConfig().getDouble("login-world.z", world.getSpawnLocation().getZ());
+        float yaw = (float) plugin.getConfig().getDouble("login-world.yaw", 0);
+        float pitch = (float) plugin.getConfig().getDouble("login-world.pitch", 0);
+        return new org.bukkit.Location(world, x, y, z, yaw, pitch);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private boolean checkMethod(HttpExchange ex, String expected) throws IOException {
-        if (!expected.equalsIgnoreCase(ex.getRequestMethod())) {
-            respond(ex, 405, "{\"error\":\"method_not_allowed\"}");
-            return false;
+    /** Tên world login lobby (rỗng = chưa set). */
+    public String getLoginSpawnWorldName() {
+        String w = plugin.getConfig().getString("login-world.world", "");
+        if (w == null || w.isBlank()) {
+            w = plugin.getConfig().getString("login-world.end-world", "");
         }
-        return true;
+        return w == null ? "" : w;
     }
 
-    private boolean checkAuth(HttpExchange ex) throws IOException {
-        String expected = plugin.getConfigManager().getBotApiSecret();
-        if (expected == null || expected.isBlank()) {
-            respond(ex, 503, "{\"error\":\"secret_not_configured\"}");
-            return false;
-        }
-
-        String auth = ex.getRequestHeaders().getFirst("Authorization");
-        if (auth == null || !auth.startsWith("Bearer ")) {
-            respond(ex, 401, "{\"error\":\"unauthorized\"}");
-            return false;
-        }
-
-        String provided = auth.substring(7).trim();
-        if (!constantTimeEquals(expected, provided)) {
-            respond(ex, 401, "{\"error\":\"unauthorized\"}");
-            return false;
-        }
-        return true;
+    public int getMaxAccountsPerIp() {
+        return plugin.getConfig().getInt("security.max-accounts-per-ip", 3);
+    }
+    public int getMaxLoginAttempts() {
+        return Math.max(1, plugin.getConfig().getInt("security.max-login-attempts", 5));
+    }
+    public int getLockoutDuration() {
+        return Math.max(1, plugin.getConfig().getInt("security.lockout-duration", 300));
+    }
+    public int getTwoFaCodeExpiry() {
+        return Math.max(30, plugin.getConfig().getInt("security.two-fa-code-expiry", 120));
+    }
+    public int getTwoFaCodeLength() {
+        return Math.min(10, Math.max(4, plugin.getConfig().getInt("security.two-fa-code-length", 6)));
+    }
+    public int getTwoFaMinResendInterval() {
+        return Math.max(0, plugin.getConfig().getInt("security.two-fa-min-resend-interval", 15));
+    }
+    public int getRegisterAttemptsPer10Min() {
+        return Math.max(1, plugin.getConfig().getInt("security.register-attempts-per-10min", 5));
+    }
+    public int getLinkAttemptsPer10Min() {
+        return Math.max(1, plugin.getConfig().getInt("security.link-attempts-per-10min", 10));
+    }
+    public int getArgon2Iterations() {
+        return Math.max(ARGON2_MIN_ITERATIONS, plugin.getConfig().getInt("security.argon2-iterations", 3));
+    }
+    public int getArgon2MemoryKb() {
+        return Math.max(ARGON2_MIN_MEMORY_KB, plugin.getConfig().getInt("security.argon2-memory-kb", 65536));
+    }
+    public int getArgon2Parallelism() {
+        return Math.max(ARGON2_MIN_PARALLELISM, plugin.getConfig().getInt("security.argon2-parallelism", 4));
     }
 
-    private static boolean constantTimeEquals(String a, String b) {
-        if (a == null || b == null) return false;
-        byte[] x = a.getBytes(StandardCharsets.UTF_8);
-        byte[] y = b.getBytes(StandardCharsets.UTF_8);
-        if (x.length != y.length) {
-            MessageDigest.isEqual(x, x);
-            return false;
-        }
-        return MessageDigest.isEqual(x, y);
+    // ---- OP Guard ----
+
+    public boolean isOpGuardBlockOpCommands()   { return plugin.getConfig().getBoolean("op-guard.block-op-commands", true); }
+    public boolean isOpGuardBlockBypassGrants() { return plugin.getConfig().getBoolean("op-guard.block-bypass-grants", true); }
+
+    // ---- Dangerous Commands ----
+
+    public boolean isDangerousCommandsEnabled() { return plugin.getConfig().getBoolean("dangerous-commands.enabled", true); }
+    public java.util.List<String> getDangerousCommandsExtra() {
+        return plugin.getConfig().getStringList("dangerous-commands.extra-protected");
+    }
+    public java.util.List<String> getConsoleOnlyCommands() {
+        return plugin.getConfig().getStringList("dangerous-commands.console-only");
     }
 
-    private static String readBody(HttpExchange ex) throws IOException {
-        try (InputStream in = ex.getRequestBody()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
+    // ---- Velocity Integration ----
+
+    /**
+     * URL Velocity HTTP server lắng nghe.
+     * Để trống nếu không dùng Velocity.
+     * Ví dụ: http://127.0.0.1:20334/auth/notify
+     */
+    public String getVelocityNotifyUrl() {
+        return plugin.getConfig().getString("velocity.notify-url", "");
     }
 
-    /** Minimal JSON string extractor — đủ cho payload nhỏ, không dùng lib ngoài. */
-    private static String extractJson(String json, String key) {
-        if (json == null || json.isBlank()) return null;
-        String pattern = "\"" + key + "\"";
-        int idx = json.indexOf(pattern);
-        if (idx < 0) return null;
-        int colon = json.indexOf(':', idx + pattern.length());
-        if (colon < 0) return null;
-        int start = json.indexOf('"', colon + 1);
-        if (start < 0) return null;
-        int end = json.indexOf('"', start + 1);
-        if (end < 0) return null;
-        return json.substring(start + 1, end);
+    public String getBackendSecret() {
+        return plugin.getConfig().getString("velocity.backend-secret", "");
     }
 
-    private static String escape(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    // ---- Discord Bot API ----
+
+    public String getBotApiUrl()     { return plugin.getConfig().getString("discord-bot.api-url", "http://127.0.0.1:8765"); }
+    public String getBotApiSecret()  { return plugin.getConfig().getString("discord-bot.api-secret", ""); }
+    public int    getBotApiTimeout() { return Math.max(500, plugin.getConfig().getInt("discord-bot.api-timeout-ms", 5000)); }
+
+    // ---- IP session (skip 2FA) ----
+
+    public boolean isIpSessionEnabled() {
+        return plugin.getConfig().getBoolean("security.ip-session.enabled", true);
+    }
+    public int getIpSessionHours() {
+        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
     }
 
-    private static void respond(HttpExchange ex, int code, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        ex.sendResponseHeaders(code, bytes.length);
-        try (OutputStream os = ex.getResponseBody()) {
-            os.write(bytes);
-        }
+
+    /** Discord nút Xác nhận/Từ chối khi IP mới (thay vì gõ mã 2FA). */
+    public boolean isIpConfirmButtonsEnabled() {
+        return plugin.getConfig().getBoolean("security.ip-session.confirm-buttons", true);
+    }
+
+    public int getIpConfirmExpirySeconds() {
+        return Math.max(30, plugin.getConfig().getInt("security.ip-session.confirm-expiry-seconds", 300));
+    }
+
+
+    // ---- Password policy ----
+
+    public boolean isPasswordRequireMixed() {
+        return plugin.getConfig().getBoolean("security.password.require-mixed", false);
+    }
+    public int getPasswordMinLength() {
+        return Math.max(6, plugin.getConfig().getInt("security.password.min-length", 8));
+    }
+
+    // ---- Register captcha ----
+
+    public boolean isRegisterCaptchaEnabled() {
+        return plugin.getConfig().getBoolean("security.register-captcha", false);
+    }
+
+    // ---- Grace period after login (ms) ----
+
+    public int getLoginGraceSeconds() {
+        return Math.max(0, plugin.getConfig().getInt("security.login-grace-seconds", 3));
+    }
+
+    public boolean isPremiumAutoLoginEnabled() {
+        return plugin.getConfig().getBoolean("security.premium-auto-login", false);
+    }
+
+    // ---- Backup ----
+
+    public int getBackupIntervalHours() {
+        return plugin.getConfig().getInt("backup.interval-hours", 24);
+    }
+    public int getBackupKeepCount() {
+        return Math.max(1, plugin.getConfig().getInt("backup.keep-count", 7));
+    }
+
+    // ---- Discord webhook alerts ----
+
+    public boolean isWebhookEnabled() {
+        return plugin.getConfig().getBoolean("alerts.webhook-enabled", false);
+    }
+    public String getWebhookUrl() {
+        return plugin.getConfig().getString("alerts.discord-webhook-url", "");
+    }
+
+    // ---- Messages ----
+
+
+    public Component getMessage(String key) {
+        String prefix = plugin.getConfig().getString("messages.prefix", "&8[&bSecureAuth&8] ");
+        String raw = plugin.getConfig().getString("messages." + key, "&cMessage not found: " + key);
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(prefix + raw);
+    }
+
+    public Component getMessageNoPrefix(String key) {
+        String raw = plugin.getConfig().getString("messages." + key, "Message not found: " + key);
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(raw);
+    }
+
+    public String getRawMessage(String key) {
+        return plugin.getConfig().getString("messages." + key, "");
     }
 }
