@@ -212,6 +212,10 @@ public class ConfigManager {
         return Math.max(0, plugin.getConfig().getInt("security.login-grace-seconds", 3));
     }
 
+    public boolean isPremiumAutoLoginEnabled() {
+        return plugin.getConfig().getBoolean("security.premium-auto-login", false);
+    }
+
     // ---- Backup ----
 
     public int getBackupIntervalHours() {
