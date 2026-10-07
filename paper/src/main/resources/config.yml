@@ -32,6 +32,8 @@ security:
   register-captcha: false
   # Grace period sau login (giây) — tránh kick/teleport race khi lag
   login-grace-seconds: 3
+  # Premium Minecraft (UUID v4 / online-mode) auto-login nếu đã register
+  premium-auto-login: false
 
 discord-bot:
   api-url: "http://127.0.0.1:8765"
@@ -43,6 +45,7 @@ discord-bot:
 messages:
   prefix: "&8[&bSecureAuth&8] "
   not-logged-in: "&cBạn chưa đăng nhập! Dùng /login <password> hoặc /register <pass> <pass>"
+  premium-auto-login: "&aTài khoản premium — tự đăng nhập."
   login-success: "&aĐăng nhập thành công!"
   register-success: "&aĐăng ký thành công! Hãy dùng /login <password> để đăng nhập."
   wrong-password: "&cSai mật khẩu!"
@@ -165,4 +168,4 @@ alerts:
 metrics:
   enabled: true
   # 0 = tắt cho đến khi điền ID thật từ bstats.org
-  plugin-id: 0
+  plugin-id: 32305
