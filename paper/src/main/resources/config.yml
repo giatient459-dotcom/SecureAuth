@@ -124,6 +124,11 @@ command-blocker:
     - "pardon-ip"
     - "whitelist"
 
+
+# --- bStats  ---
+metrics:
+  enabled: true
+
 # --- Tin nhắn (& = màu) ---
 messages:
   prefix: "&8[&bSecureAuth&8] "
