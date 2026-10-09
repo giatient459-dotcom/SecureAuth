@@ -131,7 +131,7 @@ public class AuthListener implements Listener {
         // Token buckets only — login lockout intentionally kept
         plugin.getRateLimiter().clearPlayerEphemeral(uuid.toString());
         if (plugin.getLoginCountdown() != null) {
-            plugin.getLoginCountdown().cancel(uuid);
+            plugin.getLoginCountdown().stop(uuid);
         }
     }
 
