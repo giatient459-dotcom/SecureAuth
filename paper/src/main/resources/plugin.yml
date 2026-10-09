@@ -5,6 +5,7 @@ api-version: '1.21'
 description: Secure login system with 2FA via Discord
 author: TienDay
 load: POSTWORLD
+softdepend: [ProtocolLib]
 
 commands:
   login:
