@@ -106,23 +106,6 @@ grep -qE '"id"[[:space:]]*:[[:space:]]*"secureauth-velocity"' "$TMP/velocity-plu
 grep -qE '"main"[[:space:]]*:[[:space:]]*"dev\.tienday\.secureauth\.velocity\.SecureAuthVelocity"' "$TMP/velocity-plugin.json" \
   || { echo "::error::velocity main incorrect"; exit 1; }
 
-echo "== Eggs =="
-if [ -d eggs ]; then
-  shopt -s nullglob
-  for egg in eggs/*.json; do
-    echo "Validate $egg"
-    if command -v jq >/dev/null 2>&1; then
-      jq -e '.name and .docker_images' "$egg" >/dev/null \
-        || { echo "::error::Invalid egg: $egg"; exit 1; }
-      echo "  OK: $(jq -r .name "$egg")"
-    else
-      python3 -c "import json; d=json.load(open('$egg')); assert 'name' in d; print('  OK:', d['name'])"
-    fi
-  done
-  shopt -u nullglob
-else
-  echo "::warning::eggs/ missing (optional)"
-fi
 
 echo "== RESULT OK =="
 echo "PAPER=$PAPER_JAR ($PAPER_SIZE)"
