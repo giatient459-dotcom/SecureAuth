@@ -18,7 +18,9 @@ import dev.tienday.secureauth.util.AuditLogger;
 import dev.tienday.secureauth.util.ConfigManager;
 import dev.tienday.secureauth.util.BackupManager;
 import dev.tienday.secureauth.util.IpSessionStore;
+import dev.tienday.secureauth.util.LoginCountdown;
 import dev.tienday.secureauth.util.MetricsManager;
+import dev.tienday.secureauth.util.ProtocolHook;
 import dev.tienday.secureauth.util.PluginHttpServer;
 import dev.tienday.secureauth.util.SessionManager;
 import dev.tienday.secureauth.util.WebhookNotifier;
@@ -43,6 +45,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private BackupManager backupManager;
     private IpSessionStore ipSessionStore;
     private MetricsManager metricsManager;
+    private ProtocolHook protocolHook;
+    private LoginCountdown loginCountdown;
 
     @Override
     public void onEnable() {
@@ -72,6 +76,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
         webhookNotifier  = new WebhookNotifier(this);
         backupManager    = new BackupManager(this);
         ipSessionStore   = new IpSessionStore(this);
+        loginCountdown   = new LoginCountdown(this);
 
         registerCommand("login",          new LoginCommand(this));
         registerCommand("register",       new RegisterCommand(this));
@@ -92,6 +97,9 @@ public final class SecureAuthPlugin extends JavaPlugin {
 
         pluginHttpServer = new PluginHttpServer(this);
         pluginHttpServer.start();
+
+        protocolHook = new ProtocolHook(this);
+        protocolHook.tryEnable();
 
         if (getConfig().getBoolean("metrics.enabled", true)) {
             metricsManager = new MetricsManager(this);
@@ -118,6 +126,8 @@ public final class SecureAuthPlugin extends JavaPlugin {
         if (rateLimiter      != null) rateLimiter.shutdown();
         if (backupManager    != null) backupManager.shutdown();
         if (ipSessionStore   != null) ipSessionStore.shutdown();
+        if (loginCountdown  != null) loginCountdown.shutdown();
+        if (protocolHook    != null) protocolHook.disable();
         if (metricsManager   != null) metricsManager.shutdown();
         if (pluginHttpServer != null) pluginHttpServer.stop();
         if (databaseManager  != null) databaseManager.close();
@@ -139,4 +149,6 @@ public final class SecureAuthPlugin extends JavaPlugin {
     public WebhookNotifier getWebhookNotifier()   { return webhookNotifier; }
     public BackupManager getBackupManager()       { return backupManager; }
     public IpSessionStore getIpSessionStore()     { return ipSessionStore; }
+    public ProtocolHook getProtocolHook()             { return protocolHook; }
+    public LoginCountdown getLoginCountdown()         { return loginCountdown; }
 }
