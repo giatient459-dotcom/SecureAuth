@@ -48,15 +48,9 @@ public final class LoginCountdown {
         tasks.put(uuid, task);
     }
 
-    /** Dừng countdown cho player (không nhầm với BukkitRunnable.cancel()). */
     public void stop(UUID uuid) {
         BukkitTask t = tasks.remove(uuid);
         if (t != null) t.cancel();
-    }
-
-    /** @deprecated dùng {@link #stop(UUID)} */
-    public void cancel(UUID uuid) {
-        stop(uuid);
     }
 
     public void shutdown() {
