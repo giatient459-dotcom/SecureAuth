@@ -21,7 +21,7 @@ public final class LoginCountdown {
 
     public void start(Player player) {
         if (!plugin.getConfig().getBoolean("security.login-countdown-actionbar", true)) return;
-        cancel(player.getUniqueId());
+        stop(player.getUniqueId());
         UUID uuid = player.getUniqueId();
         int totalSec = plugin.getConfigManager().getSessionTimeout();
         final int[] left = {totalSec};
@@ -30,11 +30,11 @@ public final class LoginCountdown {
             @Override
             public void run() {
                 if (!player.isOnline() || plugin.getSessionManager().isAuthenticated(uuid)) {
-                    cancel(uuid);
+                    LoginCountdown.this.stop(uuid);
                     return;
                 }
                 if (left[0] <= 0) {
-                    cancel(uuid);
+                    LoginCountdown.this.stop(uuid);
                     return;
                 }
                 String msg = plugin.getConfig().getString(
@@ -48,13 +48,21 @@ public final class LoginCountdown {
         tasks.put(uuid, task);
     }
 
-    public void cancel(UUID uuid) {
+    /** Dừng countdown cho player (không nhầm với BukkitRunnable.cancel()). */
+    public void stop(UUID uuid) {
         BukkitTask t = tasks.remove(uuid);
         if (t != null) t.cancel();
     }
 
+    /** @deprecated dùng {@link #stop(UUID)} */
+    public void cancel(UUID uuid) {
+        stop(uuid);
+    }
+
     public void shutdown() {
-        for (BukkitTask t : tasks.values()) t.cancel();
+        for (BukkitTask t : tasks.values()) {
+            t.cancel();
+        }
         tasks.clear();
     }
 }
