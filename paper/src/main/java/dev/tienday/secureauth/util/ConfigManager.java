@@ -25,7 +25,8 @@ public class ConfigManager {
         plugin.getLogger().info("Config loaded (config.yml).");
     }
 
-    /** @deprecated single config — no-op, use plugin.saveConfig() */
+    /** Prefer {@link org.bukkit.plugin.java.JavaPlugin#saveConfig()}. */
+    @Deprecated
     public void saveSectionToFile(String sectionKey, String fileName) {
         plugin.saveConfig();
     }
