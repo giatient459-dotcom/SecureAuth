@@ -67,8 +67,8 @@ login-world:
 
 # --- Velocity (để trống notify-url nếu không dùng) ---
 velocity:
-  notify-url: "http://127.0.0.1:20334/auth/notify"
-  backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
+  notify-url: "http://127.0.0.1:20335/auth/notify"
+  backend-secret: "CHANGE_ME_SET_THE_SAME_STRONG_SECRET_ON_BOTH_SIDES"
 
 # --- Sao lưu DB ---
 backup:
