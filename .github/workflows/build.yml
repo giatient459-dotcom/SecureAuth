@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-java@v5
         with:
@@ -102,14 +102,14 @@ jobs:
           echo "VELOCITY=$VEL_JAR ($VEL_SIZE bytes)"
 
       - name: Upload Paper JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: SecureAuth-Paper
           path: paper/target/SecureAuth-1.0.2.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: SecureAuth-Velocity
           path: velocity/target/SecureAuthVelocity-1.0.2.jar
