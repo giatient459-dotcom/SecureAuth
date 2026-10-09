@@ -5,7 +5,7 @@ VERSION="${PROJECT_VERSION:-1.0.2}"
 PAPER_JAR="${PAPER_JAR:-paper/target/SecureAuth-${VERSION}.jar}"
 VEL_JAR="${VEL_JAR:-velocity/target/SecureAuthVelocity-${VERSION}.jar}"
 # Supported Minecraft (Paper) versions for this release
-SUPPORTED_MC=("1.20" "1.20.1" "1.20.2" "1.20.4" "1.20.6" "1.21" "1.21.1" "1.21.3" "1.21.4")
+SUPPORTED_MC=("1.20" "1.20.1" "1.20.2" "1.20.4" "1.20.6" "1.21" "1.21.1" "1.21.3" "1.21.4" "1.21.5")
 
 echo "== Locate JARs =="
 ls -la paper/target/*.jar 2>/dev/null || true
