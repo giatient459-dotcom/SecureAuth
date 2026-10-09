@@ -53,6 +53,11 @@ public final class LoginCountdown {
         if (t != null) t.cancel();
     }
 
+    /** Alias of {@link #stop(UUID)} for callers that still use cancel. */
+    public void cancel(UUID uuid) {
+        stop(uuid);
+    }
+
     public void shutdown() {
         for (BukkitTask t : tasks.values()) {
             t.cancel();
