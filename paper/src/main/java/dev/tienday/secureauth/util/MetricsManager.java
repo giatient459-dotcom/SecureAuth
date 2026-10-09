@@ -26,7 +26,18 @@ public final class MetricsManager {
     /** Gọi trong onEnable() sau khi DB init thành công. */
     public void start() {
         try {
-            metrics = new Metrics(plugin, PLUGIN_ID);
+            int id = plugin.getConfig().getInt("metrics.plugin-id", PLUGIN_ID);
+            if (id <= 0) id = PLUGIN_ID;
+            metrics = new Metrics(plugin, id);
+
+            metrics.addCustomChart(new SimplePie("protocolib", () -> {
+                try {
+                    var hook = plugin.getProtocolHook();
+                    return (hook != null && hook.isEnabled()) ? "yes" : "no";
+                } catch (Exception e) {
+                    return "unknown";
+                }
+            }));
 
             metrics.addCustomChart(new SimplePie("ip_session_enabled", () -> {
                 try {
@@ -68,7 +79,7 @@ public final class MetricsManager {
                 }
             }));
 
-            plugin.getLogger().info("[bStats] Metrics started (pluginId=" + PLUGIN_ID + ")");
+            plugin.getLogger().info("[bStats] Metrics started (pluginId=" + id + ")");
         } catch (Throwable t) {
             plugin.getLogger().log(Level.WARNING, "[bStats] Không khởi tạo được metrics", t);
         }
