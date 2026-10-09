@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # SecureAuth — verify Paper + Velocity JARs
-# Minecraft support window: Paper 1.21.x → 1.26.x
+# Support window (user): 1.21.x - 26.x  →  api 1.21 … 1.26
 set -euo pipefail
 
 VERSION="${PROJECT_VERSION:-1.0.2}"
 PAPER_JAR="${PAPER_JAR:-paper/target/SecureAuth-${VERSION}.jar}"
 VEL_JAR="${VEL_JAR:-velocity/target/SecureAuthVelocity-${VERSION}.jar}"
 
-# Declared support: 1.21.x through 1.26.x
 MIN_MINOR=21
 MAX_MINOR=26
+WINDOW_LABEL="1.21.x - 26.x"
 RECOMMENDED_MC="1.21.4"
 
 echo "== Locate JARs =="
@@ -69,19 +69,19 @@ grep -qE 'version:' "$TMP/plugin.yml" \
 API_VER=$(grep -E '^api-version:' "$TMP/plugin.yml" | head -1 | sed -E "s/^api-version:[[:space:]]*['\"]?([^'\"]+)['\"]?.*/\1/")
 echo "api-version: $API_VER"
 
-# Parse minor from 1.XX or 1.XX.Y
-MINOR=$(echo "$API_VER" | sed -E 's/^1\.([0-9]+).*/\1/')
+# 1.21 / 1.21.4 / 21 → minor number
+MINOR=$(echo "$API_VER" | sed -E 's/^1\.([0-9]+).*/\1/; t; s/^([0-9]+).*/\1/')
 if ! [[ "$MINOR" =~ ^[0-9]+$ ]]; then
   echo "::error::Cannot parse api-version '$API_VER'"
   exit 1
 fi
 if [ "$MINOR" -lt "$MIN_MINOR" ] || [ "$MINOR" -gt "$MAX_MINOR" ]; then
-  echo "::error::api-version '$API_VER' outside support window 1.${MIN_MINOR}.x – 1.${MAX_MINOR}.x"
+  echo "::error::api-version '$API_VER' outside window ${WINDOW_LABEL} (need 1.${MIN_MINOR}…1.${MAX_MINOR})"
   exit 1
 fi
 
-echo "Support window: Paper 1.${MIN_MINOR}.x → 1.${MAX_MINOR}.x"
-echo "Recommended:    $RECOMMENDED_MC (or latest 1.21+ in window)"
+echo "Support window: ${WINDOW_LABEL}"
+echo "Recommended:    $RECOMMENDED_MC"
 
 if jar tf "$PAPER_JAR" | grep -qE '^config\.yml$'; then
   echo "config.yml present in JAR"
@@ -106,8 +106,7 @@ grep -qE '"id"[[:space:]]*:[[:space:]]*"secureauth-velocity"' "$TMP/velocity-plu
 grep -qE '"main"[[:space:]]*:[[:space:]]*"dev\.tienday\.secureauth\.velocity\.SecureAuthVelocity"' "$TMP/velocity-plugin.json" \
   || { echo "::error::velocity main incorrect"; exit 1; }
 
-
 echo "== RESULT OK =="
 echo "PAPER=$PAPER_JAR ($PAPER_SIZE)"
 echo "VELOCITY=$VEL_JAR ($VEL_SIZE)"
-echo "MC_API=$API_VER WINDOW=1.${MIN_MINOR}.x-1.${MAX_MINOR}.x RECOMMENDED=$RECOMMENDED_MC"
+echo "MC_API=$API_VER WINDOW=${WINDOW_LABEL} RECOMMENDED=$RECOMMENDED_MC"
