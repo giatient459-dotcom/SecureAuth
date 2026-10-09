@@ -58,6 +58,9 @@ public class AuthListener implements Listener {
 
         // Hide the fresh (unauthenticated) player from everyone, and everyone from them.
         applyInitialVanish(player);
+        if (plugin.getLoginCountdown() != null) {
+            plugin.getLoginCountdown().start(player);
+        }
 
         // Lưu vị trí thật NGAY (tick 0) trước khi bất kỳ teleport nào xảy ra
         plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
@@ -127,6 +130,9 @@ public class AuthListener implements Listener {
         plugin.getTwoFactorManager().clearCode(uuid);
         // Token buckets only — login lockout intentionally kept
         plugin.getRateLimiter().clearPlayerEphemeral(uuid.toString());
+        if (plugin.getLoginCountdown() != null) {
+            plugin.getLoginCountdown().cancel(uuid);
+        }
     }
 
     /** Hide tab-complete for unauthenticated players except auth commands. */
