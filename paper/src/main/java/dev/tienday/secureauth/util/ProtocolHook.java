@@ -182,6 +182,11 @@ public final class ProtocolHook {
         return builderClass.getMethod("build").invoke(builder);
     }
 
+    private static final java.util.Set<String> AUTH_CMDS = java.util.Set.of(
+            "login", "l", "register", "reg", "link",
+            "changepassword", "changepass", "cp", "cpw", "passwd", "uuid"
+    );
+
     private void handlePacket(Object packetEvent) {
         try {
             Method getPlayer = packetEvent.getClass().getMethod("getPlayer");
@@ -191,24 +196,24 @@ public final class ProtocolHook {
             if (plugin.getSessionManager().isAuthenticated(uuid)) return;
             if (plugin.getSessionManager().isInGrace(uuid)) return;
 
-            // Allow only if chat text is auth command — parse packet hard; cancel all chat/commands
-            // Auth commands still go through Bukkit if not cancelled — actually CHAT_COMMAND cancel blocks /login
-            // So only cancel if message does NOT start with /login /register /link
             String cmd = extractCommand(packetEvent);
             if (cmd != null) {
                 String lower = cmd.toLowerCase(java.util.Locale.ROOT).trim();
-                // first token
+                if (lower.startsWith("/")) lower = lower.substring(1);
                 int sp = lower.indexOf(' ');
                 String head = sp < 0 ? lower : lower.substring(0, sp);
-                if (head.equals("login") || head.equals("l")
-                        || head.equals("register") || head.equals("reg")
-                        || head.equals("link") || head.equals("changepassword")
-                        || head.equals("cp") || head.equals("passwd") || head.equals("uuid")) {
-                    return; // allow auth-related commands
+                int colon = head.indexOf(':');
+                if (colon >= 0 && colon + 1 < head.length()) head = head.substring(colon + 1);
+                if (AUTH_CMDS.contains(head)) {
+                    return; // never block auth commands
                 }
+                // Known non-auth chat/command → cancel
+                Method setCancelled = packetEvent.getClass().getMethod("setCancelled", boolean.class);
+                setCancelled.invoke(packetEvent, true);
+                return;
             }
-            Method setCancelled = packetEvent.getClass().getMethod("setCancelled", boolean.class);
-            setCancelled.invoke(packetEvent, true);
+            // extract failed: DO NOT cancel — Bukkit AuthListener still enforces login.
+            // Blind cancel would break /login on some ProtocolLib + version combos.
         } catch (Throwable ignored) {
         }
     }
