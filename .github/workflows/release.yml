@@ -51,7 +51,7 @@ jobs:
           echo "Paper=$PAPER_JAR Velocity=$VEL_JAR Tag=$TAG"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-release-jars
           path: |
