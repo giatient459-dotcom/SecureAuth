@@ -3,7 +3,13 @@ package dev.tienday.secureauth.util;
 import dev.tienday.secureauth.SecureAuthPlugin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 
+import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 
 public class ConfigManager {
@@ -13,16 +19,53 @@ public class ConfigManager {
     public static final int ARGON2_MIN_PARALLELISM  = 1;
 
     private final SecureAuthPlugin plugin;
+    private FileConfiguration lang;
+    private String locale = "en";
 
     public ConfigManager(SecureAuthPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /** Load config.yml (single file). */
+    /** Load config.yml + lang/{locale}.yml */
     public void loadAll() {
         plugin.saveDefaultConfig();
         plugin.reloadConfig();
-        plugin.getLogger().info("Config loaded (config.yml).");
+        loadLanguage();
+        plugin.getLogger().info("Config loaded (config.yml, locale=" + locale + ").");
+    }
+
+    /** Extract default lang files and load active locale. */
+    public void loadLanguage() {
+        for (String code : new String[]{"en", "vi"}) {
+            File out = new File(plugin.getDataFolder(), "lang/" + code + ".yml");
+            if (!out.exists()) {
+                plugin.saveResource("lang/" + code + ".yml", false);
+            }
+        }
+        locale = plugin.getConfig().getString("locale", "en");
+        if (locale == null || locale.isBlank()) locale = "en";
+        locale = locale.trim().toLowerCase(java.util.Locale.ROOT);
+
+        File langFile = new File(plugin.getDataFolder(), "lang/" + locale + ".yml");
+        if (!langFile.exists()) {
+            plugin.getLogger().warning("[Lang] Missing lang/" + locale + ".yml — falling back to en");
+            locale = "en";
+            langFile = new File(plugin.getDataFolder(), "lang/en.yml");
+        }
+        lang = YamlConfiguration.loadConfiguration(langFile);
+        // Merge defaults from jar so new keys appear after updates
+        try (InputStream in = plugin.getResource("lang/" + locale + ".yml")) {
+            if (in != null) {
+                YamlConfiguration def = YamlConfiguration.loadConfiguration(
+                        new InputStreamReader(in, StandardCharsets.UTF_8));
+                lang.setDefaults(def);
+                lang.options().copyDefaults(true);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public String getLocale() {
+        return locale;
     }
 
     public void validate() {
@@ -245,18 +288,42 @@ public class ConfigManager {
     // ---- Messages ----
 
 
+    /**
+     * Resolve message: lang/{locale}.yml first, then config.yml messages.*, then fallback.
+     */
+    public String resolveMessage(String key) {
+        // 1) Optional override in config.yml messages.
+        String raw = plugin.getConfig().getString("messages." + key);
+        if (raw != null && !raw.isEmpty()) {
+            return raw;
+        }
+        // 2) lang/{locale}.yml
+        if (lang != null) {
+            raw = lang.getString(key);
+            if (raw != null && !raw.isEmpty()) {
+                return raw;
+            }
+        }
+        return "&cMessage not found: " + key;
+    }
+
     public Component getMessage(String key) {
-        String prefix = plugin.getConfig().getString("messages.prefix", "&8[&bSecureAuth&8] ");
-        String raw = plugin.getConfig().getString("messages." + key, "&cMessage not found: " + key);
+        String prefix = resolveMessage("prefix");
+        if (prefix == null || prefix.isEmpty()) {
+            prefix = plugin.getConfig().getString("messages.prefix", "&8[&bSecureAuth&8] ");
+        }
+        String raw = resolveMessage(key);
         return LegacyComponentSerializer.legacyAmpersand().deserialize(prefix + raw);
     }
 
     public Component getMessageNoPrefix(String key) {
-        String raw = plugin.getConfig().getString("messages." + key, "Message not found: " + key);
-        return LegacyComponentSerializer.legacyAmpersand().deserialize(raw);
+        return LegacyComponentSerializer.legacyAmpersand().deserialize(resolveMessage(key));
     }
 
     public String getRawMessage(String key) {
-        return plugin.getConfig().getString("messages." + key, "");
+        String raw = resolveMessage(key);
+        if (raw.startsWith("&cMessage not found:")) return "";
+        return raw;
     }
 }
+
