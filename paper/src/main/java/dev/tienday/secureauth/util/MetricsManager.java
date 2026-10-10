@@ -8,12 +8,11 @@ import org.bstats.charts.SingleLineChart;
 import java.util.logging.Level;
 
 /**
- * bStats — thống kê ẩn danh.
- * Không gửi UUID / IP / username. Không dùng cho license.
+ * bStats — thống kê ẩn danh (plugin id 34505 hardcode).
+ * Bật/tắt qua config: metrics.enabled
  */
 public final class MetricsManager {
 
-    /** Plugin ID trên bstats.org */
     private static final int PLUGIN_ID = 34505;
 
     private final SecureAuthPlugin plugin;
@@ -23,16 +22,13 @@ public final class MetricsManager {
         this.plugin = plugin;
     }
 
-    /** Gọi trong onEnable() sau khi DB init thành công. */
     public void start() {
         try {
-            int id = plugin.getConfig().getInt("metrics.plugin-id", PLUGIN_ID);
-            if (id <= 0) id = PLUGIN_ID;
-            metrics = new Metrics(plugin, id);
+            metrics = new Metrics(plugin, PLUGIN_ID);
 
             metrics.addCustomChart(new SimplePie("protocolib", () -> {
                 try {
-                    var hook = plugin.getProtocolHook();
+                    ProtocolHook hook = plugin.getProtocolHook();
                     return (hook != null && hook.isEnabled()) ? "yes" : "no";
                 } catch (Exception e) {
                     return "unknown";
@@ -79,9 +75,9 @@ public final class MetricsManager {
                 }
             }));
 
-            plugin.getLogger().info("[bStats] Metrics started (pluginId=" + id + ")");
+            plugin.getLogger().info("[bStats] Metrics started (pluginId=" + PLUGIN_ID + ")");
         } catch (Throwable t) {
-            plugin.getLogger().log(Level.WARNING, "[bStats] Không khởi tạo được metrics", t);
+            plugin.getLogger().log(Level.WARNING, "[bStats] Failed to start metrics", t);
         }
     }
 
