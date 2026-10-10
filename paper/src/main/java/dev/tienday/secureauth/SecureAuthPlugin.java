@@ -44,9 +44,9 @@ public final class SecureAuthPlugin extends JavaPlugin {
     private WebhookNotifier webhookNotifier;
     private BackupManager backupManager;
     private IpSessionStore ipSessionStore;
-    private MetricsManager metricsManager;
     private ProtocolHook protocolHook;
     private LoginCountdown loginCountdown;
+    private MetricsManager metricsManager;
 
     @Override
     public void onEnable() {
@@ -106,7 +106,13 @@ public final class SecureAuthPlugin extends JavaPlugin {
             metricsManager.start();
         }
 
-        auditLogger.logSystem("STARTUP", "SecureAuth enabled — version " + getDescription().getVersion());
+        String ver;
+        try {
+            ver = getPluginMeta().getVersion();
+        } catch (Throwable t) {
+            ver = getDescription().getVersion();
+        }
+        auditLogger.logSystem("STARTUP", "SecureAuth enabled — version " + ver);
         getLogger().info("SecureAuth enabled successfully.");
     }
 
@@ -128,7 +134,7 @@ public final class SecureAuthPlugin extends JavaPlugin {
         if (ipSessionStore   != null) ipSessionStore.shutdown();
         if (loginCountdown  != null) loginCountdown.shutdown();
         if (protocolHook    != null) protocolHook.disable();
-        if (metricsManager   != null) metricsManager.shutdown();
+        if (metricsManager  != null) metricsManager.shutdown();
         if (pluginHttpServer != null) pluginHttpServer.stop();
         if (databaseManager  != null) databaseManager.close();
         if (auditLogger      != null) {
