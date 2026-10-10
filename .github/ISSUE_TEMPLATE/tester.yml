@@ -1,37 +1,37 @@
-name: Xin làm Tester
-description: Đăng ký test SecureAuth (Paper / Velocity / bot)
+name: Apply to be a Tester
+description: Register to test SecureAuth (Paper / Velocity / bot)
 title: "[Tester] "
 labels: ["tester"]
 body:
   - type: markdown
     attributes:
       value: |
-        Đăng ký tham gia test build. Không cần kinh nghiệm lập trình, cần server thử hoặc sẵn sàng report bug rõ ràng.
+        Register to join the test build. No programming experience required — you need a test server or be ready to report bugs clearly.
   - type: input
     id: discord
     attributes:
       label: Discord
-      description: Username Discord (để liên lạc)
-      placeholder: "name hoặc name#0000"
+      description: Discord username (for contact)
+      placeholder: "name or name#0000"
     validations:
       required: true
   - type: dropdown
     id: experience
     attributes:
-      label: Kinh nghiệm
+      label: Experience
       options:
-        - Mới chơi / mới setup server
-        - Đã từng dùng AuthMe / nLogin / tương tự
-        - Admin server / biết Paper + proxy
+        - New to playing / new to server setup
+        - Have used AuthMe / nLogin / similar
+        - Server admin / familiar with Paper + proxy
     validations:
       required: true
   - type: dropdown
     id: can_test
     attributes:
-      label: Có thể test
+      label: Can test
       multiple: true
       options:
-        - Paper only (không proxy)
+        - Paper only (no proxy)
         - Paper + Velocity
         - Discord 2FA / bot HTTP
         - Online-mode / premium
@@ -41,21 +41,21 @@ body:
   - type: input
     id: mc_version
     attributes:
-      label: Version Minecraft server của bạn
+      label: Your Minecraft server version
       placeholder: "1.21.4"
     validations:
       required: true
   - type: textarea
     id: note
     attributes:
-      label: Ghi chú thêm
-      placeholder: Thời gian rảnh, số slot test, v.v.
+      label: Additional notes
+      placeholder: Free time, number of test slots, etc.
   - type: checkboxes
     id: agree
     attributes:
-      label: Cam kết
+      label: Commitment
       options:
-        - label: Sẽ báo bug bằng issue template Bug report (không spam DM không rõ ràng)
+        - label: Will report bugs using the Bug report issue template (no unclear DM spam)
           required: true
-        - label: Không chia sẻ bản pre-release công khai nếu được yêu cầu giữ kín
+        - label: Will not share the pre-release build publicly if asked to keep it confidential
           required: true
