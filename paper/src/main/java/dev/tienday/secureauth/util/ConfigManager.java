@@ -89,7 +89,7 @@ public class ConfigManager {
         org.bukkit.World world = plugin.getServer().getWorld(worldName);
         if (world == null) {
             plugin.getLogger().warning("[SecureAuth] Login spawn world '" + worldName
-                    + "' chưa load. Dùng /authsetspawn trong world đó, hoặc load world.");
+                    + "' is not loaded. Use /authsetspawn in that world, or load the world.");
             return null;
         }
         double x = plugin.getConfig().getDouble("login-world.x", world.getSpawnLocation().getX());
@@ -100,7 +100,7 @@ public class ConfigManager {
         return new org.bukkit.Location(world, x, y, z, yaw, pitch);
     }
 
-    /** Tên world login lobby (rỗng = chưa set). */
+    /** Login lobby world name (empty = not set). */
     public String getLoginSpawnWorldName() {
         String w = plugin.getConfig().getString("login-world.world", "");
         if (w == null || w.isBlank()) {
@@ -189,7 +189,7 @@ public class ConfigManager {
     }
 
 
-    /** Discord nút Xác nhận/Từ chối khi IP mới (thay vì gõ mã 2FA). */
+    /** Discord Approve/Deny buttons for new IP (instead of typing 2FA code). */
     public boolean isIpConfirmButtonsEnabled() {
         return plugin.getConfig().getBoolean("security.ip-session.confirm-buttons", true);
     }
