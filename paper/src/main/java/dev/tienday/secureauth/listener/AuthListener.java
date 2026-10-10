@@ -65,8 +65,8 @@ public class AuthListener implements Listener {
         // Lưu vị trí thật NGAY (tick 0) trước khi bất kỳ teleport nào xảy ra
         plugin.getSessionManager().savePreLoginLocation(uuid, player.getLocation());
 
-                // TP login lobby nếu đã /authsetspawn (AuthMe-style). Chưa set → giữ chỗ join.
-        // Tick 5 + tick 25: chống plugin khác (MV/spawn) kéo player đi sau lần TP đầu.
+                // TP login lobby nếu đã /authsetspawn. Chưa set → giữ chỗ join.
+        // Tick 5 + 25: chống plugin khác (MV/spawn) kéo player sau lần TP đầu.
         Runnable tpLobby = () -> {
             if (!player.isOnline()) return;
             if (plugin.getSessionManager().isAuthenticated(uuid)) return;
@@ -80,7 +80,7 @@ public class AuthListener implements Listener {
         }.runTaskLater(plugin, 5L);
         new BukkitRunnable() {
             @Override public void run() { tpLobby.run(); }
-        }.runTaskLater(plugin, 25L); // 5 tick — đủ để client load xong
+        }.runTaskLater(plugin, 25L);
 
         // Deferred: send the correct prompt after the client is loaded.
         new BukkitRunnable() {
