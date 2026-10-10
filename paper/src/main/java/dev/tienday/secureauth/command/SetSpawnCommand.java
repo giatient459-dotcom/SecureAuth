@@ -50,8 +50,7 @@ public class SetSpawnCommand implements CommandExecutor {
         plugin.getConfig().set("login-world.z", loc.getZ());
         plugin.getConfig().set("login-world.yaw", (double) loc.getYaw());
         plugin.getConfig().set("login-world.pitch", (double) loc.getPitch());
-        plugin.getConfigManager().saveSectionToFile("login-world", "login-world.yml");
-        // keep in-memory config in sync
+        // Single config.yml — save all keys including login-world
         plugin.saveConfig();
 
         player.sendMessage(Component.text(
