@@ -1,7 +1,7 @@
-## Thay đổi
-<!-- Mô tả ngắn -->
+## Changes
+Add to ProtocolLib
 
 ## Checklist
-- [ ] `mvn -B package` local OK
-- [ ] Không commit secret / token
-- [ ] Đã test Paper (và Velocity nếu đụng proxy)
+- [ ] `mvn -B package` passes locally
+- [ ] No secrets / tokens committed
+- [ ] Tested on Paper (and Velocity if proxy is affected)
