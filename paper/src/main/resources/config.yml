@@ -1,16 +1,19 @@
 # ============================================================
 # SecureAuth — config.yml
-# SQLite: plugins/SecureAuth/secureauth.db (tự tạo)
-# Chỉ sửa phần bạn cần. Key nâng cao để mặc định.
+# SQLite: plugins/SecureAuth/secureauth.db (auto-created)
+# Change only what you need; leave advanced keys at defaults.
 # ============================================================
 
-# --- Đăng nhập / bảo mật ---
+# Language: en | vi  (files: plugins/SecureAuth/lang/<locale>.yml)
+locale: en
+
+# --- Login / security ---
 security:
-  # Giây chờ login trước khi kick
+  # Seconds to wait for login before kick
   session-timeout: 300
-  # Hiện đếm ngược trên action bar
+  # Show countdown on action bar
   login-countdown-actionbar: true
-  # Giây "ân hạn" sau login (tránh kick/TP khi lag)
+  # Grace seconds after login (avoid kick/TP on lag)
   login-grace-seconds: 3
 
   max-login-attempts: 5
@@ -24,7 +27,7 @@ security:
     min-length: 8
     require-mixed: false
 
-  # Bỏ qua 2FA nếu cùng IP trong X giờ
+  # Skip 2FA if same IP within X hours
   ip-session:
     enabled: true
     hours: 72
@@ -35,30 +38,26 @@ security:
   two-fa-code-length: 6
   two-fa-min-resend-interval: 15
 
-  # true = acc premium (online UUID) đã register → tự login
-  kick-2fa-dm-failed: "&cKhông gửi được mã 2FA Discord. Thử lại sau."
-  kick-ip-denied: "&cIP bị từ chối trên Discord."
-  link-rate-limited: "&cLink quá nhiều. Thử lại sau."
-  password-weak: "&cMật khẩu cần chữ và số (theo config)."
+  # true = premium (online UUID) + registered → auto-login
   premium-auto-login: false
 
-  # Argon2 — đừng đổi nếu không biết
+  # Argon2 — do not change unless you know what you are doing
   argon2-iterations: 3
   argon2-memory-kb: 65536
   argon2-parallelism: 4
 
 # --- Discord bot (2FA) ---
-# api-url = bot gọi ra; plugin-http-port = bot gọi vào plugin
+# api-url = plugin calls bot; plugin-http-* = bot calls plugin
 discord-bot:
   api-url: "http://127.0.0.1:8765"
   api-secret: "CHANGE_ME_STRONG_SECRET"
   api-timeout-ms: 5000
-  # Cổng HTTP plugin (bot gọi vào)
+  # Plugin HTTP port (bot calls in)
   plugin-http-port: 20334
-  # 127.0.0.1 = chỉ máy local | 0.0.0.0 = bot remote (bắt buộc api-secret mạnh + firewall)
+  # 127.0.0.1 = local only | 0.0.0.0 = remote bot (strong api-secret + firewall required)
   plugin-http-bind: "127.0.0.1"
 
-# --- Lobby chưa login (đứng chỗ → /authsetspawn) ---
+# --- Login lobby (stand there → /authsetspawn) ---
 login-world:
   world: ""
   end-world: ""
@@ -68,24 +67,22 @@ login-world:
   yaw: 0.0
   pitch: 0.0
 
-# --- Velocity (để trống notify-url nếu không dùng) ---
+# --- Velocity (leave notify-url empty if unused) ---
 velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
 
-# --- Sao lưu DB ---
+# --- Database backup ---
 backup:
   interval-hours: 24
   keep-count: 7
 
-# --- Webhook Discord (lockout / admin) ---
+# --- Discord webhook (lockout / admin alerts) ---
 alerts:
   webhook-enabled: false
   discord-webhook-url: ""
 
-
-
-# --- Chặn OP / lệnh nguy hiểm ---
+# --- OP / dangerous command guards ---
 op-guard:
   block-op-commands: true
   block-bypass-grants: true
@@ -96,78 +93,17 @@ dangerous-commands:
   console-only:
     - "stop"
     - "restart"
+    - "reload"
+  # examples of other protected groups are handled in code permissions
 
-command-blocker:
-  enabled: true
-  message: "&cUnknown command. Type /help for help."
-  blocked:
-    - "gamemode"
-    - "gm"
-    - "tp"
-    - "tphere"
-    - "teleport"
-    - "give"
-    - "enchant"
-    - "effect"
-    - "kill"
-    - "summon"
-    - "setblock"
-    - "fill"
-    - "time"
-    - "weather"
-    - "difficulty"
-    - "spawnpoint"
-    - "xp"
-    - "experience"
-    - "attribute"
-    - "ban"
-    - "ban-ip"
-    - "kick"
-    - "pardon"
-    - "pardon-ip"
-    - "whitelist"
-
-
-# --- bStats ---
+# --- bStats (plugin id 34505 is hardcoded) ---
 metrics:
   enabled: true
 
-# --- Tin nhắn (& = màu) ---
-messages:
-  prefix: "&8[&bSecureAuth&8] "
-  not-logged-in: "&cBạn chưa đăng nhập! Dùng /login <password> hoặc /register <pass> <pass>"
-  not-registered: "&cBạn chưa có tài khoản. Dùng /register <pass> <confirm>."
-  already-logged-in: "&eBạn đã đăng nhập rồi."
-  already-registered: "&cTên này đã được đăng ký."
-  login-success: "&aĐăng nhập thành công!"
-  login-countdown: "&eĐăng nhập trong &c{seconds}&e giây..."
-  register-success: "&aĐăng ký thành công! Hãy dùng /login <password>."
-  wrong-password: "&cSai mật khẩu!"
-  password-mismatch: "&cHai mật khẩu không khớp."
-  password-too-short: "&cMật khẩu phải có ít nhất 8 ký tự."
-  password-changed: "&aĐổi mật khẩu thành công!"
-  too-many-attempts: "&cQuá nhiều lần thử. Thử lại sau {seconds} giây."
-  session-expired: "&cPhiên hết hạn. Đăng nhập lại."
-  kick-not-logged-in: "&cBạn chưa đăng nhập kịp thời."
-  kick-session-expired: "&cPhiên đăng nhập hết hạn."
-  two-fa-required: "&eMã 2FA đã gửi qua Discord DM. Dùng /login <mã>."
-  two-fa-invalid: "&cMã 2FA không hợp lệ hoặc hết hạn."
-  two-fa-expired: "&cMã 2FA hết hạn. Đăng nhập lại để nhận mã mới."
-  two-fa-cooldown: "&eĐợi {seconds} giây trước khi xin mã mới."
-  discord-not-linked: "&eChưa link Discord. Nhắn bot lấy code → /link <code>."
-  discord-link-success: "&aĐã liên kết Discord!"
-  discord-link-invalid: "&cCode link không hợp lệ hoặc hết hạn."
-  register-rate-limited: "&cĐăng ký quá nhiều. Thử lại sau."
-  register-ip-limit: "&cIP này đã đăng ký quá nhiều tài khoản."
-  captcha-required: "&eCaptcha: {a} + {b} = ?  /register <pass> <confirm> <kết_quả>"
-  captcha-wrong: "&cSai captcha."
-  ip-confirm-sent: "&eIP mới (&f{ip}&e). Mở Discord DM → Xác nhận / Từ chối."
-  ip-confirm-waiting: "&eĐang chờ xác nhận IP trên Discord..."
-  ip-confirm-approved: "&aĐã xác nhận IP — đăng nhập thành công!"
-  ip-session-skip-2fa: "&aIP tin cậy — bỏ qua 2FA."
-  force-2fa-required: "&eStaff bắt buộc 2FA. Hãy /link Discord."
-  kick-2fa-dm-failed: "&cKhông gửi được mã 2FA Discord. Thử lại sau."
-  kick-ip-denied: "&cIP bị từ chối trên Discord."
-  link-rate-limited: "&cLink quá nhiều. Thử lại sau."
-  password-weak: "&cMật khẩu cần chữ và số (theo config)."
-  premium-auto-login: "&aTài khoản premium — tự đăng nhập."
+# --- ProtocolLib (optional soft-depend) ---
+protocolib:
+  enabled: true
+
+# --- Optional message overrides (prefer editing lang/en.yml or lang/vi.yml) ---
+# If a key exists here under messages., it overrides the lang file for that key only.
+messages: {}
