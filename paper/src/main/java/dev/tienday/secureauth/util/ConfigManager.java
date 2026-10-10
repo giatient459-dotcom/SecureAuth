@@ -25,12 +25,6 @@ public class ConfigManager {
         plugin.getLogger().info("Config loaded (config.yml).");
     }
 
-    /** Prefer {@link org.bukkit.plugin.java.JavaPlugin#saveConfig()}. */
-    @Deprecated
-    public void saveSectionToFile(String sectionKey, String fileName) {
-        plugin.saveConfig();
-    }
-
     public void validate() {
         int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
         int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
@@ -51,8 +45,21 @@ public class ConfigManager {
 
         String secret = getBotApiSecret();
         if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)) {
-            plugin.getLogger().log(Level.WARNING,
-                    "discord-bot.api-secret has not been changed. 2FA-over-Discord is NOT secure.");
+            plugin.getLogger().log(Level.SEVERE,
+                    "discord-bot.api-secret is default/empty — CHANGE IT before production. "
+                    + "HTTP API and Discord 2FA are NOT secure until then.");
+        }
+        String bind = plugin.getConfig().getString("discord-bot.plugin-http-bind", "127.0.0.1");
+        if (bind != null && ("0.0.0.0".equals(bind.trim()) || "*".equals(bind.trim()))) {
+            if (secret == null || secret.isBlank() || "CHANGE_ME_STRONG_SECRET".equals(secret)
+                    || secret.length() < 16) {
+                plugin.getLogger().log(Level.SEVERE,
+                        "plugin-http-bind is public (0.0.0.0) but api-secret is weak/default — "
+                        + "refuse to recommend this. Set a long random secret.");
+            } else {
+                plugin.getLogger().warning(
+                        "plugin-http-bind=0.0.0.0 — ensure firewall only allows your bot IP.");
+            }
         }
 
     }
@@ -178,7 +185,7 @@ public class ConfigManager {
         return plugin.getConfig().getBoolean("security.ip-session.enabled", true);
     }
     public int getIpSessionHours() {
-        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 12));
+        return Math.max(0, plugin.getConfig().getInt("security.ip-session.hours", 72));
     }
 
 
