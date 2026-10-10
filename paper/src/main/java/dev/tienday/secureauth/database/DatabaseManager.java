@@ -43,7 +43,7 @@ public class DatabaseManager {
         try (Statement st = connection.createStatement()) {
             st.execute("PRAGMA journal_mode=WAL");
             st.execute("PRAGMA foreign_keys=ON");
-            st.execute("PRAGMA busy_timeout=5000");
+            st.execute("PRAGMA busy_timeout=10000");
         }
 
         createTables();
@@ -187,7 +187,7 @@ public class DatabaseManager {
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
             try (java.sql.Statement st = connection.createStatement()) {
                 st.execute("PRAGMA journal_mode=WAL");
-                st.execute("PRAGMA busy_timeout=5000");
+                st.execute("PRAGMA busy_timeout=10000");
                 st.execute("PRAGMA foreign_keys=ON");
             }
         }
