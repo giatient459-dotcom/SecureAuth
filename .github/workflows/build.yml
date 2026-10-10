@@ -38,14 +38,14 @@ jobs:
           echo "| Java **21** | Required (build) |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Paper JAR
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-Paper
           path: paper/target/SecureAuth-1.0.2.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-Velocity
           path: velocity/target/SecureAuthVelocity-1.0.2.jar
