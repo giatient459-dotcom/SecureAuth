@@ -40,40 +40,40 @@ public final class TitleUtil {
             send(player, "&c&lĐĂNG NHẬP", "&7Dùng &f/login <mật khẩu>", 10, 60, 10);
             actionBar(player, "&e/login <password> &7hoặc code Discord 2FA");
         } else {
-            send(player, "&e&lĐĂNG KÝ", "&7Dùng &f/register <pass> <pass>", 10, 60, 10);
+            send(player, "&e&lREGISTER", "&7Use &f/register <pass> <pass>", 10, 60, 10);
             actionBar(player, "&e/register <password> <confirm>");
         }
     }
 
     public static void loginSuccess(Player player) {
-        send(player, "&a&lTHÀNH CÔNG", "&7Chào mừng trở lại!", 5, 40, 10);
-        actionBar(player, "&aĐăng nhập thành công");
+        send(player, "&a&lSUCCESS", "&7Welcome back!", 5, 40, 10);
+        actionBar(player, "&aLogin successful");
         try {
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.2f);
         } catch (Exception ignored) {}
     }
 
     public static void registerSuccess(Player player) {
-        send(player, "&a&lĐĂNG KÝ OK", "&7Giờ hãy &f/login", 5, 40, 10);
-        actionBar(player, "&aĐăng ký thành công — dùng /login");
+        send(player, "&a&lREGISTERED", "&7Now use &f/login", 5, 40, 10);
+        actionBar(player, "&aRegistered — use /login");
         try {
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.0f);
         } catch (Exception ignored) {}
     }
 
     public static void twoFaPrompt(Player player) {
-        send(player, "&b&l2FA", "&7Nhập mã từ Discord", 5, 50, 10);
-        actionBar(player, "&e/login <mã 2FA>");
+        send(player, "&b&l2FA", "&7Enter the code from Discord", 5, 50, 10);
+        actionBar(player, "&e/login <2FA code>");
     }
 
-    /** IP mới — chờ bấm Xác nhận / Từ chối trên Discord */
+    /** New IP — wait for Approve / Deny on Discord */
     public static void ipConfirmPrompt(Player player) {
-        send(player, "&6&lIP MỚI", "&7Mở Discord → Xác nhận hoặc Từ chối", 5, 80, 10);
-        actionBar(player, "&eKiểm tra DM Discord bot — nút Xác nhận / Từ chối");
+        send(player, "&6&lNEW IP", "&7Open Discord → Approve or Deny", 5, 80, 10);
+        actionBar(player, "&eCheck bot DM — Approve / Deny buttons");
     }
 
     public static void premiumAutoLogin(Player player) {
-        send(player, "&a&lPREMIUM", "&7Tự đăng nhập", 5, 30, 10);
+        send(player, "&a&lPREMIUM", "&7Auto login", 5, 30, 10);
         actionBar(player, "&aPremium auto-login");
         try {
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.4f);
@@ -81,8 +81,8 @@ public final class TitleUtil {
     }
 
     public static void loginDenied(Player player) {
-        send(player, "&c&lTỪ CHỐI", "&7Đăng nhập bị từ chối trên Discord", 5, 40, 10);
-        actionBar(player, "&cBạn đã từ chối đăng nhập từ IP này");
+        send(player, "&c&lDENIED", "&7Login denied on Discord", 5, 40, 10);
+        actionBar(player, "&cLogin from this IP was denied");
     }
 }
 
