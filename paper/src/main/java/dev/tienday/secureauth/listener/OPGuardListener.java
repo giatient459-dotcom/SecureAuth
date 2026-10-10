@@ -94,7 +94,7 @@ public class OPGuardListener implements Listener {
             if (!player.hasPermission("secureauth.manage-op")) {
                 event.setCancelled(true);
                 player.sendMessage(net.kyori.adventure.text.Component.text(
-                        "§c[SecureAuth] /op và /deop bị chặn. Dùng console.",
+                        "§c[SecureAuth] /op and /deop are blocked. Use the console.",
                         net.kyori.adventure.text.format.NamedTextColor.RED));
                 auditAndLog(player, "OP_CMD_BLOCKED", "Attempted: " + sanitize(raw));
                 return;
@@ -105,7 +105,7 @@ public class OPGuardListener implements Listener {
         if (SUDO_OP_PATTERN.matcher(lower).matches()) {
             event.setCancelled(true);
             player.sendMessage(net.kyori.adventure.text.Component.text(
-                    "§c[SecureAuth] Không thể sudo lệnh op.",
+                    "§c[SecureAuth] Cannot sudo op commands.",
                     net.kyori.adventure.text.format.NamedTextColor.RED));
             auditAndLog(player, "SUDO_OP_BLOCKED", "Attempted sudo-op: " + sanitize(raw));
             return;
@@ -116,7 +116,7 @@ public class OPGuardListener implements Listener {
                 && BYPASS_GRANT_PATTERN.matcher(lower).find()) {
             event.setCancelled(true);
             player.sendMessage(net.kyori.adventure.text.Component.text(
-                    "§c[SecureAuth] Không thể cấp secureauth.bypass.",
+                    "§c[SecureAuth] Cannot grant secureauth.bypass.",
                     net.kyori.adventure.text.format.NamedTextColor.RED));
             auditAndLog(player, "BYPASS_GRANT_BLOCKED", "Attempted: " + sanitize(raw));
         }
