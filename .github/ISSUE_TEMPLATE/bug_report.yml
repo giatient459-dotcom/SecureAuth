@@ -1,29 +1,29 @@
 name: Bug report
-description: Báo lỗi plugin SecureAuth (Paper / Velocity)
+description: Report a bug in the SecureAuth plugin (Paper / Velocity)
 title: "[Bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Cảm ơn bạn đã báo lỗi. Điền đủ thông tin giúp fix nhanh hơn.
+        Thank you for reporting a bug. Filling in all the information helps us fix it faster.
   - type: dropdown
     id: component
     attributes:
-      label: Thành phần
-      description: Lỗi xảy ra ở đâu?
+      label: Component
+      description: Where does the bug occur?
       options:
         - Paper plugin
         - Velocity plugin
         - Discord bot / HTTP API
-        - Không chắc
+        - Not sure
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Version plugin
-      description: Ví dụ 1.0.2 (trong /plugins hoặc plugin.yml)
+      label: Plugin version
+      description: Example 1.0.2 (from /plugins or plugin.yml)
       placeholder: "1.0.2"
     validations:
       required: true
@@ -31,15 +31,15 @@ body:
     id: server
     attributes:
       label: Server / proxy
-      description: Paper/Purpur version, Velocity version (nếu có)
+      description: Paper/Purpur version, Velocity version (if applicable)
       placeholder: "Paper 1.21.4, Velocity 3.4.0"
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Cách tái hiện
-      description: Các bước để gặp lỗi
+      label: Steps to reproduce
+      description: Steps to trigger the bug
       placeholder: |
         1. Join server
         2. /login ...
@@ -49,31 +49,31 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Kỳ vọng
-      placeholder: Điều đúng ra phải xảy ra
+      label: Expected behavior
+      placeholder: What should have happened
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Thực tế
-      placeholder: Điều đang xảy ra (kèm screenshot nếu có)
+      label: Actual behavior
+      placeholder: What is happening (include screenshots if available)
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Log / stack trace
-      description: Dán log console (che secret, token, webhook)
+      label: Logs / stack trace
+      description: Paste console logs (redact secrets, tokens, webhooks)
       render: shell
   - type: checkboxes
     id: checklist
     attributes:
       label: Checklist
       options:
-        - label: Đã đọc README / config.yml
+        - label: I have read the README / config.yml
           required: true
-        - label: Đã thử restart server sau khi đổi config
+        - label: I have tried restarting the server after changing the config
           required: false
-        - label: Không dán API secret / webhook URL vào issue
+        - label: I did not paste API secrets / webhook URLs into the issue
           required: true
