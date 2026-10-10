@@ -37,10 +37,11 @@ public final class LoginCountdown {
                     LoginCountdown.this.stop(uuid);
                     return;
                 }
-                String msg = plugin.getConfig().getString(
-                        "messages.login-countdown",
-                        "&ePlease log in within &c{seconds}&e seconds..."
-                ).replace("{seconds}", String.valueOf(left[0]));
+                String msg = plugin.getConfigManager().getRawMessage("login-countdown");
+                if (msg == null || msg.isEmpty()) {
+                    msg = "&ePlease log in within &c{seconds}&e seconds...";
+                }
+                msg = msg.replace("{seconds}", String.valueOf(left[0]));
                 TitleUtil.actionBar(player, msg);
                 left[0]--;
             }
