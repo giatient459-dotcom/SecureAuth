@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Action bar đếm ngược trước khi kick chưa login. */
+/** Action-bar countdown before kicking unauthenticated players. */
 public final class LoginCountdown {
 
     private final SecureAuthPlugin plugin;
@@ -39,7 +39,7 @@ public final class LoginCountdown {
                 }
                 String msg = plugin.getConfig().getString(
                         "messages.login-countdown",
-                        "&eĐăng nhập trong &c{seconds}&e giây..."
+                        "&ePlease log in within &c{seconds}&e seconds..."
                 ).replace("{seconds}", String.valueOf(left[0]));
                 TitleUtil.actionBar(player, msg);
                 left[0]--;
