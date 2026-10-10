@@ -51,15 +51,20 @@ public final class PluginHttpServer {
             return;
         }
 
+        // 127.0.0.1 = chỉ local (an toàn). 0.0.0.0 = bot remote (cần firewall + secret mạnh).
+        String bind = plugin.getConfig().getString("discord-bot.plugin-http-bind", "127.0.0.1");
+        if (bind == null || bind.isBlank()) bind = "127.0.0.1";
+        bind = bind.trim();
+
         try {
-            server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            server = HttpServer.create(new InetSocketAddress(bind, port), 0);
             server.createContext("/auth/verify-credentials", this::handleVerifyCredentials);
             server.createContext("/auth/discord-status", this::handleDiscordStatus);
             server.createContext("/auth/ip-confirm", this::handleIpConfirm);
             server.createContext("/auth/health", this::handleHealth);
             server.setExecutor(Executors.newFixedThreadPool(2));
             server.start();
-            plugin.getLogger().info("[PluginHttpServer] Listening on 127.0.0.1:" + port);
+            plugin.getLogger().info("[PluginHttpServer] Listening on " + bind + ":" + port);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "[PluginHttpServer] Failed to start: " + e.getMessage(), e);
             server = null;
