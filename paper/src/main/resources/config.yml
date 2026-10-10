@@ -53,7 +53,10 @@ discord-bot:
   api-url: "http://127.0.0.1:8765"
   api-secret: "CHANGE_ME_STRONG_SECRET"
   api-timeout-ms: 5000
+  # Cổng HTTP plugin (bot gọi vào)
   plugin-http-port: 20334
+  # 127.0.0.1 = chỉ máy local | 0.0.0.0 = bot remote (bắt buộc api-secret mạnh + firewall)
+  plugin-http-bind: "127.0.0.1"
 
 # --- Lobby chưa login (đứng chỗ → /authsetspawn) ---
 login-world:
@@ -67,8 +70,8 @@ login-world:
 
 # --- Velocity (để trống notify-url nếu không dùng) ---
 velocity:
-  notify-url: "http://127.0.0.1:20335/auth/notify"
-  backend-secret: "CHANGE_ME_SET_THE_SAME_STRONG_SECRET_ON_BOTH_SIDES"
+  notify-url: "http://127.0.0.1:20334/auth/notify"
+  backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
 
 # --- Sao lưu DB ---
 backup:
@@ -125,7 +128,7 @@ command-blocker:
     - "whitelist"
 
 
-# --- bStats  ---
+# --- bStats ---
 metrics:
   enabled: true
 
