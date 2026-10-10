@@ -88,4 +88,14 @@ public final class TitleUtil {
                 msg("subtitle-denied", "&7Login denied on Discord"), 5, 40, 10);
         actionBar(player, msg("actionbar-denied", "&cLogin from this IP was denied"));
     }
+
+    /** Alias used by LoginCommand */
+    public static void ipConfirmPrompt(Player player) {
+        newIpPrompt(player);
+    }
+
+    /** Alias used by LoginCommand */
+    public static void premiumAutoLogin(Player player) {
+        premiumAuto(player);
+    }
 }
