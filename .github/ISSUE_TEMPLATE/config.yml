@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Hướng dẫn / README
+  - name: Guide / README
     url: https://github.com/giatient459-dotcom/SecureAuth#readme
-    about: Đọc README trước khi báo lỗi hoặc xin làm tester.
+    about: Read the README before reporting a bug or applying to be a tester.
