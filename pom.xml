@@ -10,11 +10,12 @@
     <packaging>pom</packaging>
 
     <name>SecureAuth Parent</name>
-    <description>Paper auth plugin + Velocity companion (multi-module)</description>
+    <description>Paper/Spigot/Purpur auth + Velocity/BungeeCord companions</description>
 
     <modules>
         <module>paper</module>
         <module>velocity</module>
+        <module>bungee</module>
     </modules>
 
     <properties>
@@ -22,11 +23,11 @@
         <maven.compiler.release>21</maven.compiler.release>
         <paper.version>1.21.4-R0.1-SNAPSHOT</paper.version>
         <velocity.version>3.3.0-SNAPSHOT</velocity.version>
+        <bungee.version>1.21-R0.2-SNAPSHOT</bungee.version>
         <bouncycastle.version>1.78.1</bouncycastle.version>
         <sqlite.version>3.45.3.0</sqlite.version>
         <gson.version>2.11.0</gson.version>
-        <bstats.version>3.2.1</bstats.version>
-    </properties>
+</properties>
 
     <repositories>
         <repository>
@@ -36,6 +37,10 @@
         <repository>
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
+        </repository>
+        <repository>
+            <id>md-5</id>
+            <url>https://repo.md-5.net/content/repositories/snapshots/</url>
         </repository>
     </repositories>
 
@@ -68,17 +73,7 @@
                 <artifactId>bcprov-jdk18on</artifactId>
                 <version>${bouncycastle.version}</version>
             </dependency>
-            <dependency>
-                <groupId>org.bstats</groupId>
-                <artifactId>bstats-bukkit</artifactId>
-                <version>${bstats.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.bstats</groupId>
-                <artifactId>bstats-velocity</artifactId>
-                <version>${bstats.version}</version>
-            </dependency>
-        </dependencies>
+</dependencies>
     </dependencyManagement>
 
     <build>
