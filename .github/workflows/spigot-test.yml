@@ -24,16 +24,14 @@ jobs:
       - name: Build plugin
         run: mvn -B clean verify --no-transfer-progress
 
-      # ===== SMART CACHE: Chỉ cache file spigot.jar cuối =====
-      # Key bao gồm MC version + BuildTools version để tự invalidate
+      # ===== SMART CACHE =====
       - name: Get BuildTools version for cache key
         id: bt_version
         run: |
-          # Lấy timestamp của BuildTools.jar làm version marker
           BT_URL="https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar"
-          BT_DATE=$(curl -sI "$BT_URL" | grep -i 'last-modified' | cut -d' ' -f2- | tr -d '\r')
+          BT_DATE=$(curl -sI "$BT_URL" | grep -i 'last-modified' | cut -d' ' -f2- | tr -d '\r' | tr -d ',' | tr ' ' '-')
           echo "BUILDTOOLS_DATE=$BT_DATE" >> $GITHUB_OUTPUT
-          echo "BuildTools last modified: $BT_DATE"
+          echo "BuildTools date: $BT_DATE"
 
       - name: Restore Spigot jar from cache
         id: spigot_cache
@@ -42,7 +40,6 @@ jobs:
           path: .spigot-cache/spigot-${{ inputs.mc_version }}.jar
           key: spigot-jar-${{ inputs.mc_version }}-${{ steps.bt_version.outputs.BUILDTOOLS_DATE }}
 
-      # ===== Nếu cache miss → build Spigot =====
       - name: Build Spigot (cache miss)
         if: steps.spigot_cache.outputs.cache-hit != 'true'
         env:
@@ -52,7 +49,6 @@ jobs:
           chmod +x scripts/buildtools.sh
           bash scripts/buildtools.sh
 
-          # Copy file spigot.jar sang cache dir
           mkdir -p .spigot-cache
           SPIGOT_JAR=$(find .buildtools -name "spigot-${MC_VERSION}*.jar" -type f ! -name "*-bootstrap.jar" | head -1)
           if [ -z "$SPIGOT_JAR" ]; then
@@ -62,7 +58,6 @@ jobs:
           cp "$SPIGOT_JAR" ".spigot-cache/spigot-${MC_VERSION}.jar"
           echo "Đã lưu cache: .spigot-cache/spigot-${MC_VERSION}.jar"
 
-      # ===== Nếu cache hit → dùng luôn, không build =====
       - name: Restore Spigot jar (cache hit)
         if: steps.spigot_cache.outputs.cache-hit == 'true'
         run: |
@@ -70,9 +65,7 @@ jobs:
           mkdir -p .buildtools
           cp ".spigot-cache/spigot-${{ inputs.mc_version }}.jar" \
              ".buildtools/spigot-${{ inputs.mc_version }}.jar"
-          echo "Đã restore spigot jar từ cache"
 
-      # ===== Save cache (chỉ khi miss) =====
       - name: Save Spigot jar to cache
         if: steps.spigot_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -80,7 +73,6 @@ jobs:
           path: .spigot-cache/spigot-${{ inputs.mc_version }}.jar
           key: spigot-jar-${{ inputs.mc_version }}-${{ steps.bt_version.outputs.BUILDTOOLS_DATE }}
 
-      # ===== Debug =====
       - name: Debug - List Spigot files
         if: always()
         run: |
@@ -89,7 +81,6 @@ jobs:
           echo "=== .spigot-cache ==="
           find .spigot-cache -name "*.jar" -type f 2>/dev/null || echo "not found"
 
-      # ===== Upload artifacts =====
       - name: Upload Spigot jar
         uses: actions/upload-artifact@v4
         with:
