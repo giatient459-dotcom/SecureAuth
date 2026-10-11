@@ -15,37 +15,81 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
 
-      - name: Cache BuildTools
-        uses: actions/cache@v4
-        with:
-          path: .buildtools
-          key: buildtools-${{ runner.os }}-${{ inputs.mc_version }}
-
       - name: Build plugin
         run: mvn -B clean verify --no-transfer-progress
 
-      - name: Build Spigot
+      # ===== SMART CACHE: Chỉ cache file spigot.jar cuối =====
+      # Key bao gồm MC version + BuildTools version để tự invalidate
+      - name: Get BuildTools version for cache key
+        id: bt_version
+        run: |
+          # Lấy timestamp của BuildTools.jar làm version marker
+          BT_URL="https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar"
+          BT_DATE=$(curl -sI "$BT_URL" | grep -i 'last-modified' | cut -d' ' -f2- | tr -d '\r')
+          echo "BUILDTOOLS_DATE=$BT_DATE" >> $GITHUB_OUTPUT
+          echo "BuildTools last modified: $BT_DATE"
+
+      - name: Restore Spigot jar from cache
+        id: spigot_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .spigot-cache/spigot-${{ inputs.mc_version }}.jar
+          key: spigot-jar-${{ inputs.mc_version }}-${{ steps.bt_version.outputs.BUILDTOOLS_DATE }}
+
+      # ===== Nếu cache miss → build Spigot =====
+      - name: Build Spigot (cache miss)
+        if: steps.spigot_cache.outputs.cache-hit != 'true'
         env:
           MC_VERSION: ${{ inputs.mc_version }}
         run: |
+          rm -rf .buildtools
           chmod +x scripts/buildtools.sh
           bash scripts/buildtools.sh
 
+          # Copy file spigot.jar sang cache dir
+          mkdir -p .spigot-cache
+          SPIGOT_JAR=$(find .buildtools -name "spigot-${MC_VERSION}*.jar" -type f ! -name "*-bootstrap.jar" | head -1)
+          if [ -z "$SPIGOT_JAR" ]; then
+            echo "::error::Không tìm thấy spigot jar sau khi build"
+            exit 1
+          fi
+          cp "$SPIGOT_JAR" ".spigot-cache/spigot-${MC_VERSION}.jar"
+          echo "Đã lưu cache: .spigot-cache/spigot-${MC_VERSION}.jar"
+
+      # ===== Nếu cache hit → dùng luôn, không build =====
+      - name: Restore Spigot jar (cache hit)
+        if: steps.spigot_cache.outputs.cache-hit == 'true'
+        run: |
+          echo "✅ Cache hit! Skip BuildTools."
+          mkdir -p .buildtools
+          cp ".spigot-cache/spigot-${{ inputs.mc_version }}.jar" \
+             ".buildtools/spigot-${{ inputs.mc_version }}.jar"
+          echo "Đã restore spigot jar từ cache"
+
+      # ===== Save cache (chỉ khi miss) =====
+      - name: Save Spigot jar to cache
+        if: steps.spigot_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .spigot-cache/spigot-${{ inputs.mc_version }}.jar
+          key: spigot-jar-${{ inputs.mc_version }}-${{ steps.bt_version.outputs.BUILDTOOLS_DATE }}
+
+      # ===== Debug =====
       - name: Debug - List Spigot files
         if: always()
         run: |
-          echo "=== Search spigot jars ==="
-          find .buildtools -name "spigot-*.jar" -type f 2>/dev/null || echo "not found in .buildtools"
-          find . -name "spigot-*.jar" -type f 2>/dev/null | head -20 || true
-          echo "=== .buildtools tree (2 levels) ==="
-          find .buildtools -maxdepth 3 -type d 2>/dev/null | head -20
+          echo "=== .buildtools ==="
+          find .buildtools -name "spigot-*.jar" -type f 2>/dev/null || echo "not found"
+          echo "=== .spigot-cache ==="
+          find .spigot-cache -name "*.jar" -type f 2>/dev/null || echo "not found"
 
+      # ===== Upload artifacts =====
       - name: Upload Spigot jar
         uses: actions/upload-artifact@v4
         with:
@@ -53,6 +97,7 @@ jobs:
           path: |
             .buildtools/**/spigot-*.jar
             .buildtools/spigot-*.jar
+            .spigot-cache/spigot-*.jar
           if-no-files-found: warn
 
       - name: Upload plugin
