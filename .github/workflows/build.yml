@@ -37,14 +37,22 @@ jobs:
         run: bash scripts/verify-jars.sh
 
       - name: Upload Paper JAR
+ dependabot/github_actions/actions/upload-artifact-7
+        uses: actions/upload-artifact@v7
+
         uses: actions/upload-artifact@v4
+ monorepo-fix
         with:
           name: SecureAuth-Paper
           path: paper/target/SecureAuth-*.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
+ dependabot/github_actions/actions/upload-artifact-7
+        uses: actions/upload-artifact@v7
+
         uses: actions/upload-artifact@v4
+ monorepo-fix
         with:
           name: SecureAuth-Velocity
           path: velocity/target/SecureAuthVelocity-*.jar
