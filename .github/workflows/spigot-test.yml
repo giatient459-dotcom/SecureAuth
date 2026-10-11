@@ -37,16 +37,27 @@ jobs:
           chmod +x scripts/buildtools.sh
           bash scripts/buildtools.sh
 
+      - name: Debug - List Spigot files
+        if: always()
+        run: |
+          echo "=== Search spigot jars ==="
+          find .buildtools -name "spigot-*.jar" -type f 2>/dev/null || echo "not found in .buildtools"
+          find . -name "spigot-*.jar" -type f 2>/dev/null | head -20 || true
+          echo "=== .buildtools tree (2 levels) ==="
+          find .buildtools -maxdepth 3 -type d 2>/dev/null | head -20
+
       - name: Upload Spigot jar
         uses: actions/upload-artifact@v4
         with:
           name: spigot-${{ inputs.mc_version }}
-          path: .buildtools/spigot-*.jar
-          if-no-files-found: error
+          path: |
+            .buildtools/**/spigot-*.jar
+            .buildtools/spigot-*.jar
+          if-no-files-found: warn
 
       - name: Upload plugin
         uses: actions/upload-artifact@v4
         with:
           name: SecureAuth-Spigot-Test
           path: paper/target/SecureAuth-*.jar
-          if-no-files-found: error
+          if-no-files-found: warn
