@@ -35,34 +35,44 @@ if [ "$JAVA_VER" -lt 21 ] && [[ "$MC_VERSION" == 1.21* ]]; then
   exit 1
 fi
 
-# ============ BUILD SPIGOT ============
+# ============ TẢI BUILDTOOLS ============
 mkdir -p "$WORK_DIR"
-cd "$WORK_DIR"
-
-if [ ! -f BuildTools.jar ]; then
+if [ ! -f "$WORK_DIR/BuildTools.jar" ]; then
   log_info "Downloading BuildTools.jar..."
-  curl -fsSL -o BuildTools.jar "$BUILDTOOLS_URL" \
+  curl -fsSL -o "$WORK_DIR/BuildTools.jar" "$BUILDTOOLS_URL" \
     || { log_error "Không tải được BuildTools.jar"; exit 1; }
 fi
 
+# ============ BUILD SPIGOT ============
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   log_info "Bắt đầu build Spigot $MC_VERSION (10-30 phút, kiên nhẫn)..."
-  java -jar BuildTools.jar --rev "$MC_VERSION" --output-dir "$WORK_DIR"
+  cd "$WORK_DIR"
+  # KHÔNG dùng --output-dir để tránh lặp path .buildtools/.buildtools/
+  java -jar BuildTools.jar --rev "$MC_VERSION"
+  cd ..
 fi
 
-SPIGOT_JAR="$WORK_DIR/spigot-${MC_VERSION}.jar"
-[ -f "$SPIGOT_JAR" ] || { log_error "Không tìm thấy $SPIGOT_JAR — build thất bại"; exit 1; }
-log_info "Spigot JAR OK: $(stat -c%s "$SPIGOT_JAR") bytes"
+# ============ TÌM FILE SPIGOT (TÊN LINH HOẠT) ============
+SPIGOT_JAR=$(find "$WORK_DIR" -maxdepth 3 -name "spigot-${MC_VERSION}*.jar" -type f ! -name "*-bootstrap.jar" | head -1)
+
+if [ -z "$SPIGOT_JAR" ]; then
+  log_error "Không tìm thấy spigot-${MC_VERSION}*.jar trong $WORK_DIR"
+  log_info "Các file .jar có trong $WORK_DIR:"
+  find "$WORK_DIR" -name "*.jar" -type f
+  exit 1
+fi
+
+log_info "Spigot JAR OK: $SPIGOT_JAR"
+log_info "Size: $(stat -c%s "$SPIGOT_JAR") bytes"
 
 # ============ CHUẨN BỊ TEST SERVER ============
-cd ..
 mkdir -p "$TEST_SERVER_DIR/plugins"
 cp "$SPIGOT_JAR" "$TEST_SERVER_DIR/spigot.jar"
 echo "eula=true" > "$TEST_SERVER_DIR/eula.txt"
 
 if [ ! -f "$PLUGIN_JAR" ]; then
   log_warn "Plugin JAR chưa có: $PLUGIN_JAR"
-  log_info "Chạy: mvn clean verify  (ở thư mục gốc) trước"
+  log_info "Chạy: mvn clean verify (ở thư mục gốc) trước"
   exit 1
 fi
 cp "$PLUGIN_JAR" "$TEST_SERVER_DIR/plugins/"
