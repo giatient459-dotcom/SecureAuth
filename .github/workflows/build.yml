@@ -23,7 +23,7 @@ jobs:
 
       - name: Verify JARs + MC version
         env:
-          PROJECT_VERSION: '1.0.3'
+          PROJECT_VERSION: '1.0.2'
         run: bash scripts/verify-jars.sh
 
       - name: Matrix note (supported MC)
@@ -35,6 +35,7 @@ jobs:
           echo "| Paper **1.21.x – 1.26.x** | Supported |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Paper 1.20.x | Best-effort / test |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Velocity 3.3 / 3.4 | Companion module |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| BungeeCord / Waterfall | Companion module |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Java **21** | Required (build) |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Paper JAR
@@ -49,4 +50,11 @@ jobs:
         with:
           name: SecureAuth-Velocity
           path: velocity/target/SecureAuthVelocity-1.0.2.jar
+          if-no-files-found: error
+
+      - name: Upload BungeeCord JAR
+        uses: actions/upload-artifact@v5
+        with:
+          name: SecureAuth-BungeeCord
+          path: bungee/target/SecureAuthBungee-1.0.2.jar
           if-no-files-found: error
