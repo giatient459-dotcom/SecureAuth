@@ -14,10 +14,14 @@ jobs:
  dependabot/github_actions/actions/checkout-7
       - uses: actions/checkout@v7
 
+ dependabot/github_actions/actions/setup-java-6
+      - uses: actions/setup-java@v6
+
       - uses: actions/checkout@v4
  monorepo-fix
 
       - uses: actions/setup-java@v4
+ monorepo-fix
         with:
           java-version: '21'
           distribution: temurin
