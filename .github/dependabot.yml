@@ -1,25 +1,7 @@
 version: 2
 updates:
-  # Maven dependencies (parent + paper + velocity)
+  # ===== MAVEN DEPENDENCIES =====
   - package-ecosystem: "maven"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "maven"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
-    reviewers:
-      - "giatient459-dotcom"
-
-  # GitHub Actions workflows
-  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -29,9 +11,49 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
+      - "maven"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Gộp minor + patch vào 1 PR duy nhất
+    groups:
+      maven-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Bỏ qua major bump của dependency dễ gây breaking
+    ignore:
+      # Velocity API: 3.x → 4.x breaking changes lớn
+      - dependency-name: "com.velocitypowered:velocity-api"
+        update-types:
+          - "version-update:semver-major"
+      # Paper API: giữ version tương thích NMS
+      - dependency-name: "io.papermc.paper:paper-api"
+        update-types:
+          - "version-update:semver-major"
+      # BungeeCord API: giữ version tương thích
+      - dependency-name: "net.md-5:bungeecord-api"
+        update-types:
+          - "version-update:semver-major"
+      # BouncyCastle: major bump có thể đổi API crypto
+      - dependency-name: "org.bouncycastle:bcprov-jdk18on"
+        update-types:
+          - "version-update:semver-major"
+
+  # ===== GITHUB ACTIONS =====
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
       - "github-actions"
     commit-message:
       prefix: "ci"
       include: "scope"
-    reviewers:
-      - "giatient459-dotcom"

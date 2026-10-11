@@ -5,10 +5,15 @@ pom.xml.releaseBackup
 pom.xml.versionsBackup
 release.properties
 
-# Gradle (legacy, phòng khi cần)
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
+# Maven flatten plugin
+.flattened-pom.xml
+**/.flattened-pom.xml
+
+# BuildTools
+.buildtools/
+.spigot-test/
+BuildTools.jar
+spigot-*.jar
 
 # IDE
 .idea/
@@ -23,10 +28,6 @@ build/
 .env.*
 *.key
 *.pem
-
-# Database
-*.db
-*.sqlite
 
 # OS
 .DS_Store

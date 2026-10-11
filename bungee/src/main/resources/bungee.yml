@@ -1,0 +1,5 @@
+name: SecureAuthBungee
+main: dev.tienday.secureauth.bungee.SecureAuthBungee
+version: 1.0.2
+author: TienDay
+description: BungeeCord/Waterfall companion — blocks unauthenticated server switches until Paper login

@@ -6,25 +6,28 @@
 
     <groupId>dev.tienday</groupId>
     <artifactId>secureauth-parent</artifactId>
-    <version>1.0.2</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>SecureAuth Parent</name>
-    <description>Paper auth plugin + Velocity companion (multi-module)</description>
+    <description>Paper/Spigot/Purpur auth + Velocity/BungeeCord companions</description>
 
     <modules>
         <module>paper</module>
         <module>velocity</module>
+        <module>bungee</module>
     </modules>
 
     <properties>
+        <revision>1.0.3</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>21</maven.compiler.release>
         <paper.version>1.21.4-R0.1-SNAPSHOT</paper.version>
-        <velocity.version>3.3.0-SNAPSHOT</velocity.version>
-        <bouncycastle.version>1.78.1</bouncycastle.version>
-        <sqlite.version>3.45.3.0</sqlite.version>
-        <gson.version>2.11.0</gson.version>
+        <velocity.version>3.5.1</velocity.version>
+        <bungee.version>1.21-R0.3</bungee.version>
+        <bouncycastle.version>1.86</bouncycastle.version>
+        <sqlite.version>3.53.4.0</sqlite.version>
+        <gson.version>2.14.0</gson.version>
         <bstats.version>3.2.1</bstats.version>
     </properties>
 
@@ -36,6 +39,14 @@
         <repository>
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
+        </repository>
+        <repository>
+            <id>md-5</id>
+            <url>https://repo.md-5.net/content/groups/public/</url>
+        </repository>
+        <repository>
+            <id>opencollab</id>
+            <url>https://repo.opencollab.dev/main/</url>
         </repository>
     </repositories>
 
@@ -78,6 +89,11 @@
                 <artifactId>bstats-velocity</artifactId>
                 <version>${bstats.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.bstats</groupId>
+                <artifactId>bstats-bungeecord</artifactId>
+                <version>${bstats.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -87,7 +103,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.13.0</version>
+                    <version>3.16.0</version>
                     <configuration>
                         <release>21</release>
                         <encoding>UTF-8</encoding>
@@ -96,14 +112,42 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
-                    <version>3.6.0</version>
+                    <version>3.6.2</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
-                    <version>3.4.2</version>
+                    <version>3.5.1</version>
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.8.0</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

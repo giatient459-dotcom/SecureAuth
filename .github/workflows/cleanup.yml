@@ -1,0 +1,60 @@
+name: Cleanup Dependabot PRs
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode: merge-pass, close-major, all'
+        required: true
+        default: 'all'
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup GitHub CLI
+        run: gh --version
+
+      - name: List open PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Open PRs ==="
+          gh pr list --state open --json number,title,mergeable
+
+      - name: Merge PRs that pass CI
+        if: inputs.mode == 'merge-pass' || inputs.mode == 'all'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for pr in $(gh pr list --state open --json number,title --jq '.[] | select(.title | contains("bump")) | .number'); do
+            echo "Checking PR #$pr..."
+            if gh pr checks "$pr" 2>/dev/null; then
+              echo "✅ PR #$pr passes — merging"
+              gh pr merge "$pr" --merge || echo "⚠️ Merge failed: #$pr"
+            else
+              echo "❌ PR #$pr fails — skipping"
+            fi
+          done
+
+      - name: Close major bump PRs
+        if: inputs.mode == 'close-major' || inputs.mode == 'all'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Close PR title chứa "major" hoặc specific dependency
+          for pr in 9 11; do
+            echo "Closing PR #$pr..."
+            gh pr close "$pr" --comment "@dependabot ignore this major version" \
+              || echo "⚠️ Close failed: #$pr"
+          done
+
+      - name: Final state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr list --state open
