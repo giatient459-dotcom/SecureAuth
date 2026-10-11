@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# SecureAuth — verify Paper + Velocity JARs
-# Support window (user): 1.21.x - 26.x  →  api 1.21 … 1.26
+# SecureAuth — verify Paper + Velocity + BungeeCord JARs
 set -euo pipefail
 
 VERSION="${PROJECT_VERSION:-1.0.2}"
 PAPER_JAR="${PAPER_JAR:-paper/target/SecureAuth-${VERSION}.jar}"
 VEL_JAR="${VEL_JAR:-velocity/target/SecureAuthVelocity-${VERSION}.jar}"
+BUNGEE_JAR="${BUNGEE_JAR:-bungee/target/SecureAuthBungee-${VERSION}.jar}"
 
 MIN_MINOR=21
 MAX_MINOR=26
@@ -15,14 +15,18 @@ RECOMMENDED_MC="1.21.4"
 echo "== Locate JARs =="
 ls -la paper/target/*.jar 2>/dev/null || true
 ls -la velocity/target/*.jar 2>/dev/null || true
+ls -la bungee/target/*.jar 2>/dev/null || true
 
-test -f "$PAPER_JAR" || { echo "::error::Missing $PAPER_JAR"; exit 1; }
-test -f "$VEL_JAR"   || { echo "::error::Missing $VEL_JAR"; exit 1; }
+test -f "$PAPER_JAR"  || { echo "::error::Missing $PAPER_JAR"; exit 1; }
+test -f "$VEL_JAR"    || { echo "::error::Missing $VEL_JAR"; exit 1; }
+test -f "$BUNGEE_JAR" || { echo "::error::Missing $BUNGEE_JAR"; exit 1; }
 
 PAPER_SIZE=$(stat -c%s "$PAPER_JAR")
 VEL_SIZE=$(stat -c%s "$VEL_JAR")
-echo "Paper JAR size:   $PAPER_SIZE bytes"
+BUNGEE_SIZE=$(stat -c%s "$BUNGEE_JAR")
+echo "Paper JAR size:    $PAPER_SIZE bytes"
 echo "Velocity JAR size: $VEL_SIZE bytes"
+echo "Bungee JAR size:   $BUNGEE_SIZE bytes"
 
 if [ "$PAPER_SIZE" -lt 500000 ]; then
   echo "::error::Paper JAR too small ($PAPER_SIZE) — shade may have failed"
@@ -32,10 +36,16 @@ if [ "$VEL_SIZE" -lt 2000 ]; then
   echo "::error::Velocity JAR too small ($VEL_SIZE)"
   exit 1
 fi
+if [ "$BUNGEE_SIZE" -lt 2000 ]; then
+  echo "::error::BungeeCord JAR too small ($BUNGEE_SIZE)"
+  exit 1
+fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# ============ PAPER ============
+echo ""
 echo "== Paper JAR contents =="
 for path in \
   'plugin.yml' \
@@ -69,7 +79,6 @@ grep -qE 'version:' "$TMP/plugin.yml" \
 API_VER=$(grep -E '^api-version:' "$TMP/plugin.yml" | head -1 | sed -E "s/^api-version:[[:space:]]*['\"]?([^'\"]+)['\"]?.*/\1/")
 echo "api-version: $API_VER"
 
-# 1.21 / 1.21.4 / 21 → minor number
 MINOR=$(echo "$API_VER" | sed -E 's/^1\.([0-9]+).*/\1/; t; s/^([0-9]+).*/\1/')
 if ! [[ "$MINOR" =~ ^[0-9]+$ ]]; then
   echo "::error::Cannot parse api-version '$API_VER'"
@@ -89,6 +98,8 @@ else
   echo "::warning::config.yml not at JAR root"
 fi
 
+# ============ VELOCITY ============
+echo ""
 echo "== Velocity JAR =="
 jar tf "$VEL_JAR" | grep -qE 'velocity-plugin\.json$' \
   || { echo "::error::velocity-plugin.json missing"; exit 1; }
@@ -106,7 +117,26 @@ grep -qE '"id"[[:space:]]*:[[:space:]]*"secureauth-velocity"' "$TMP/velocity-plu
 grep -qE '"main"[[:space:]]*:[[:space:]]*"dev\.tienday\.secureauth\.velocity\.SecureAuthVelocity"' "$TMP/velocity-plugin.json" \
   || { echo "::error::velocity main incorrect"; exit 1; }
 
+# ============ BUNGEECORD ============
+echo ""
+echo "== BungeeCord JAR =="
+jar tf "$BUNGEE_JAR" | grep -qE 'bungee\.yml$' \
+  || { echo "::error::bungee.yml missing"; exit 1; }
+jar tf "$BUNGEE_JAR" | grep -qE 'dev/tienday/secureauth/bungee/SecureAuthBungee\.class$' \
+  || { echo "::error::SecureAuthBungee.class missing"; exit 1; }
+
+unzip -p "$BUNGEE_JAR" bungee.yml > "$TMP/bungee.yml"
+echo "--- bungee.yml ---"
+cat "$TMP/bungee.yml"
+
+grep -qE 'main:[[:space:]]*dev\.tienday\.secureauth\.bungee\.SecureAuthBungee' "$TMP/bungee.yml" \
+  || { echo "::error::bungee.yml main incorrect"; exit 1; }
+grep -qE 'name:[[:space:]]*SecureAuth' "$TMP/bungee.yml" \
+  || { echo "::error::bungee.yml name incorrect"; exit 1; }
+
+echo ""
 echo "== RESULT OK =="
 echo "PAPER=$PAPER_JAR ($PAPER_SIZE)"
 echo "VELOCITY=$VEL_JAR ($VEL_SIZE)"
+echo "BUNGEECORD=$BUNGEE_JAR ($BUNGEE_SIZE)"
 echo "MC_API=$API_VER WINDOW=${WINDOW_LABEL} RECOMMENDED=$RECOMMENDED_MC"
