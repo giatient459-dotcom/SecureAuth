@@ -2,9 +2,12 @@ name: SecureAuth
 version: '${project.version}'
 main: dev.tienday.secureauth.SecureAuthPlugin
 api-version: '1.21'
-description: Secure login system with 2FA via Discord
+description: Secure login system with Discord 2FA — Paper/Purpur/Spigot backend
 author: TienDay
+website: https://github.com/giatient459-dotcom/SecureAuth
 load: POSTWORLD
+# Paper recommended. Purpur OK. Spigot 1.21+ usually OK (Adventure). Folia NOT supported.
+folia-supported: false
 softdepend: [ProtocolLib]
 
 commands:
