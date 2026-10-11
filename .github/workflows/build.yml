@@ -3,13 +3,13 @@ name: Build
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -19,57 +19,32 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # Lấy version động từ pom.xml — không cần hardcode nữa
-      - name: Get project version
-        id: get_version
-        run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Project version: $VERSION"
-
-      # Chạy test + package (mvn verify chạy cả test và package)
       - name: Build all modules
         run: mvn -B verify --no-transfer-progress
 
-      # Verify cả 3 JAR (Paper + Velocity + BungeeCord)
-      - name: Verify JARs + MC version
-        env:
-          PROJECT_VERSION: ${{ steps.get_version.outputs.VERSION }}
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Verify JARs
         run: bash scripts/verify-jars.sh
 
-      # Bảng tóm tắt hiển thị trên GitHub Actions
-      - name: Matrix note (supported MC)
-        run: |
-          echo "## SecureAuth compatibility" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Target | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Paper **1.21.x – 1.26.x** | Supported |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Paper 1.20.x | Best-effort / test |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Velocity 3.3 / 3.4 | Companion module |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| BungeeCord / Waterfall | Companion module |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Java **21** | Required (build) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Build version:** \`${{ steps.get_version.outputs.VERSION }}\`" >> "$GITHUB_STEP_SUMMARY"
-
-      # Upload 3 artifact riêng biệt
       - name: Upload Paper JAR
         uses: actions/upload-artifact@v4
         with:
           name: SecureAuth-Paper
-          path: paper/target/SecureAuth-${{ steps.get_version.outputs.VERSION }}.jar
+          path: paper/target/SecureAuth-*.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
         uses: actions/upload-artifact@v4
         with:
           name: SecureAuth-Velocity
-          path: velocity/target/SecureAuthVelocity-${{ steps.get_version.outputs.VERSION }}.jar
+          path: velocity/target/SecureAuthVelocity-*.jar
           if-no-files-found: error
 
       - name: Upload BungeeCord JAR
         uses: actions/upload-artifact@v4
         with:
           name: SecureAuth-BungeeCord
-          path: bungee/target/SecureAuthBungee-${{ steps.get_version.outputs.VERSION }}.jar
+          path: bungee/target/SecureAuthBungee-*.jar
           if-no-files-found: error
