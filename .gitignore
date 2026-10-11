@@ -5,7 +5,11 @@ pom.xml.releaseBackup
 pom.xml.versionsBackup
 release.properties
 
-# Gradle (legacy, phòng khi cần)
+# Maven flatten plugin
+.flattened-pom.xml
+**/.flattened-pom.xml
+
+# Gradle (legacy)
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
