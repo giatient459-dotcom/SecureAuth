@@ -9,10 +9,11 @@ release.properties
 .flattened-pom.xml
 **/.flattened-pom.xml
 
-# Gradle (legacy)
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
+# BuildTools
+.buildtools/
+.spigot-test/
+BuildTools.jar
+spigot-*.jar
 
 # IDE
 .idea/
@@ -27,10 +28,6 @@ build/
 .env.*
 *.key
 *.pem
-
-# Database
-*.db
-*.sqlite
 
 # OS
 .DS_Store
