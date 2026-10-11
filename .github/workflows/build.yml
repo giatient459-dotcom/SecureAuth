@@ -28,6 +28,14 @@ jobs:
       - name: Verify JARs
         run: bash scripts/verify-jars.sh
 
+      - name: Security Audit
+        run: |
+          if [ -f scripts/audit.py ]; then
+            python3 scripts/audit.py
+          else
+            echo "::warning::audit.py not found — skip security audit"
+          fi
+
       - name: Upload Paper JAR
         uses: actions/upload-artifact@v7
         with:
