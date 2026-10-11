@@ -11,17 +11,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
- dependabot/github_actions/actions/checkout-7
-      - uses: actions/checkout@v7
-
- dependabot/github_actions/actions/setup-java-6
-      - uses: actions/setup-java@v6
-
       - uses: actions/checkout@v4
- monorepo-fix
 
       - uses: actions/setup-java@v4
- monorepo-fix
         with:
           java-version: '21'
           distribution: temurin
@@ -37,22 +29,14 @@ jobs:
         run: bash scripts/verify-jars.sh
 
       - name: Upload Paper JAR
- dependabot/github_actions/actions/upload-artifact-7
-        uses: actions/upload-artifact@v7
-
         uses: actions/upload-artifact@v4
- monorepo-fix
         with:
           name: SecureAuth-Paper
           path: paper/target/SecureAuth-*.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
- dependabot/github_actions/actions/upload-artifact-7
-        uses: actions/upload-artifact@v7
-
         uses: actions/upload-artifact@v4
- monorepo-fix
         with:
           name: SecureAuth-Velocity
           path: velocity/target/SecureAuthVelocity-*.jar
