@@ -148,7 +148,7 @@ public class RegisterCommand implements CommandExecutor {
                             "REGISTER_SUCCESS", "New account created");
                     plugin.getServer().getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
-                        plugin.getSessionManager().authenticate(playerUuid);
+                        plugin.getSessionManager().authenticate(playerUuid, safeIp(player));
                         plugin.getSessionManager().restoreLocationAfterLogin(player);
                         dev.tienday.secureauth.listener.AuthListener.revealPlayer(plugin, player);
                         player.sendMessage(plugin.getConfigManager().getMessage("register-success"));
