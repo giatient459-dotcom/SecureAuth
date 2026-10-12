@@ -12,11 +12,17 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * In-memory auth sessions.
+ * Optional IP binding (security.bind-session-ip) mitigates session reuse after IP change.
+ */
 public class SessionManager {
+
+    private record Session(long lastActive, String ip) {}
 
     private final SecureAuthPlugin plugin;
 
-    private final Map<UUID, Long> sessions = new ConcurrentHashMap<>();
+    private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<UUID, Location> preLoginLocations = new ConcurrentHashMap<>();
     private final Set<UUID> awaitingTwoFa = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Long> graceUntil = new ConcurrentHashMap<>();
@@ -38,14 +44,12 @@ public class SessionManager {
         long timeoutMs = plugin.getConfigManager().getSessionTimeout() * 1000L;
 
         List<UUID> toKick = new ArrayList<>();
-        for (Map.Entry<UUID, Long> entry : sessions.entrySet()) {
+        for (Map.Entry<UUID, Session> entry : sessions.entrySet()) {
             UUID uuid = entry.getKey();
-            Long lastActive = entry.getValue();
-            if (lastActive == null) continue;
-            if (now - lastActive <= timeoutMs) continue;
-
-            // Atomic removal — only if value hasn't been refreshed by a concurrent touch().
-            if (sessions.remove(uuid, lastActive)) {
+            Session s = entry.getValue();
+            if (s == null) continue;
+            if (now - s.lastActive() <= timeoutMs) continue;
+            if (sessions.remove(uuid, s)) {
                 awaitingTwoFa.remove(uuid);
                 toKick.add(uuid);
             }
@@ -60,7 +64,12 @@ public class SessionManager {
     }
 
     public void authenticate(UUID uuid) {
-        sessions.put(uuid, System.currentTimeMillis());
+        authenticate(uuid, null);
+    }
+
+    public void authenticate(UUID uuid, String ip) {
+        String bound = (ip == null || ip.isBlank() || "unknown".equals(ip)) ? null : ip;
+        sessions.put(uuid, new Session(System.currentTimeMillis(), bound));
         awaitingTwoFa.remove(uuid);
         int grace = plugin.getConfigManager().getLoginGraceSeconds();
         if (grace > 0) {
@@ -69,10 +78,8 @@ public class SessionManager {
     }
 
     public void setAwaitingTwoFa(UUID uuid) {
-        // Set the awaiting flag BEFORE writing the session entry so that
-        // isAuthenticated() never observes (session=present, awaiting=absent).
         awaitingTwoFa.add(uuid);
-        sessions.put(uuid, System.currentTimeMillis());
+        sessions.put(uuid, new Session(System.currentTimeMillis(), null));
     }
 
     public boolean isAwaitingTwoFa(UUID uuid) {
@@ -84,7 +91,45 @@ public class SessionManager {
         return sessions.containsKey(uuid);
     }
 
-    /** True for a few seconds after login — softens teleport/kick races. */
+    /**
+     * Authenticated + optional IP match (when security.bind-session-ip=true).
+     * Mismatch → invalidate (anti session-hijack / IP swap).
+     */
+    public boolean isAuthenticated(Player player) {
+        if (player == null) return false;
+        UUID uuid = player.getUniqueId();
+        if (awaitingTwoFa.contains(uuid)) return false;
+        Session s = sessions.get(uuid);
+        if (s == null) return false;
+        if (!isBindSessionIp()) return true;
+        String cur = playerIp(player);
+        if (s.ip() == null || s.ip().isBlank()) {
+            // bind on first successful check after login without IP
+            sessions.put(uuid, new Session(s.lastActive(), cur));
+            return true;
+        }
+        if (!s.ip().equals(cur)) {
+            plugin.getLogger().warning("[SecureAuth] Session IP mismatch for "
+                    + player.getName() + " bound=" + s.ip() + " now=" + cur + " — invalidating");
+            invalidate(uuid);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isBindSessionIp() {
+        return plugin.getConfig().getBoolean("security.bind-session-ip", true);
+    }
+
+    private static String playerIp(Player player) {
+        try {
+            if (player.getAddress() != null && player.getAddress().getAddress() != null) {
+                return player.getAddress().getAddress().getHostAddress();
+            }
+        } catch (Exception ignored) {}
+        return "unknown";
+    }
+
     public boolean isInGrace(UUID uuid) {
         Long until = graceUntil.get(uuid);
         if (until == null) return false;
@@ -96,8 +141,9 @@ public class SessionManager {
     }
 
     public void touch(UUID uuid) {
-        if (sessions.containsKey(uuid)) {
-            sessions.put(uuid, System.currentTimeMillis());
+        Session s = sessions.get(uuid);
+        if (s != null) {
+            sessions.put(uuid, new Session(System.currentTimeMillis(), s.ip()));
         }
     }
 
@@ -108,24 +154,16 @@ public class SessionManager {
         graceUntil.remove(uuid);
     }
 
-    /** Lưu vị trí join trước khi TP login lobby */
     public void savePreLoginLocation(UUID uuid, Location loc) {
         preLoginLocations.put(uuid, loc.clone());
     }
 
-    /**
-     * Restore vị trí sau login/register.
-     * - Có pre-login location → luôn ưu tiên trả về đó (kể cả cùng world lobby).
-     * - Chỉ đẩy về default world spawn khi không có saved VÀ đang đứng trong login-lobby.
-     * - Không có lobby + không có saved → giữ nguyên chỗ hiện tại.
-     */
     public void restoreLocationAfterLogin(Player player) {
         Location saved = preLoginLocations.remove(player.getUniqueId());
         String loginWorld = plugin.getConfigManager().getLoginSpawnWorldName();
         org.bukkit.Location authSpawn = plugin.getConfigManager().getLoginSpawnLocation();
 
         if (saved != null && saved.getWorld() != null) {
-            // Cùng điểm auth spawn (sai số 1 block) → coi như guest spawn, đẩy về overworld spawn
             if (authSpawn != null
                     && saved.getWorld().equals(authSpawn.getWorld())
                     && saved.distanceSquared(authSpawn) < 4.0) {
@@ -139,7 +177,6 @@ public class SessionManager {
             return;
         }
 
-        // Không có saved: nếu đang kẹt trong login-lobby → overworld spawn
         if (!loginWorld.isEmpty()
                 && player.getWorld() != null
                 && player.getWorld().getName().equals(loginWorld)
@@ -150,7 +187,6 @@ public class SessionManager {
                 player.teleport(def.getSpawnLocation());
             }
         }
-        // else: giữ nguyên vị trí hiện tại
     }
 
     public void shutdown() {
