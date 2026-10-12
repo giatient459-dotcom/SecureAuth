@@ -316,6 +316,8 @@ public class AuthListener implements Listener {
 
     private boolean isBlocked(Player player) {
         if (player.hasPermission("secureauth.bypass")) return false;
-        return !plugin.getSessionManager().isAuthenticated(player.getUniqueId());
+        // IP-bound session check (security.bind-session-ip)
+        return !plugin.getSessionManager().isAuthenticated(player);
     }
 }
+
