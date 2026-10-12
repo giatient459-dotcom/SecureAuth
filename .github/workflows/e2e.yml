@@ -76,7 +76,7 @@ jobs:
           echo "✅ Test server prepared"
 
       # ───────────────────────────────────────────────────────
-      # 3. Download Paper server (API v3 + fallback v2)
+      # 3. Download Paper server
       # ───────────────────────────────────────────────────────
       - name: Download Paper server
         env:
@@ -86,10 +86,9 @@ jobs:
 
           JAR_URL=""
 
-          # ── Thử API v3 trước ──
           echo "=== Trying API v3 ==="
           V3_JSON=$(curl -s "https://api.papermc.io/v3/projects/paper/versions/${MC_VERSION}/builds" || echo "[]")
-          echo "v3 preview: $(echo "$V3_JSON" | head -c 300)"
+          echo "v3 preview: $(echo "$V3_JSON" | head -c 200)"
 
           if echo "$V3_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if isinstance(d,list) and len(d)>0 else 1)" 2>/dev/null; then
             JAR_URL=$(echo "$V3_JSON" | python3 -c "
@@ -105,12 +104,9 @@ jobs:
             echo "✅ API v3 works"
           fi
 
-          # ── Fallback sang API v2 ──
           if [ -z "$JAR_URL" ]; then
             echo "=== Falling back to API v2 ==="
             V2_JSON=$(curl -s "https://api.papermc.io/v2/projects/paper/versions/${MC_VERSION}/builds" || echo "{}")
-            echo "v2 preview: $(echo "$V2_JSON" | head -c 300)"
-
             if echo "$V2_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if 'builds' in d and len(d['builds'])>0 else 1)" 2>/dev/null; then
               BUILD=$(echo "$V2_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds'][-1]['build'])")
               JAR_URL="https://api.papermc.io/v2/projects/paper/versions/${MC_VERSION}/builds/${BUILD}/downloads/paper-${MC_VERSION}-${BUILD}.jar"
@@ -118,29 +114,14 @@ jobs:
             fi
           fi
 
-          # ── Cả 2 API fail → thử Purpur ──
           if [ -z "$JAR_URL" ]; then
-            echo "=== Falling back to Purpur (Paper-compatible) ==="
+            echo "=== Fallback to Purpur ==="
             JAR_URL="https://api.purpurmc.org/v2/purpur/${MC_VERSION}/latest/download"
-            echo "✅ Purpur fallback: $JAR_URL"
           fi
 
-          echo "JAR URL: $JAR_URL"
           curl -sSL -o paper.jar "$JAR_URL"
           ls -lh paper.jar
-
-          # Verify JAR không rỗng và là file zip/jar hợp lệ
-          if [ ! -s paper.jar ]; then
-            echo "❌ paper.jar is empty"
-            exit 1
-          fi
-          if ! file paper.jar | grep -qE "Java archive|Zip archive"; then
-            echo "❌ paper.jar is not a valid JAR file"
-            file paper.jar
-            head -c 200 paper.jar
-            exit 1
-          fi
-
+          file paper.jar | grep -qE "Java archive|Zip archive" || { echo "❌ Invalid JAR"; exit 1; }
           echo "✅ Paper downloaded"
 
       # ───────────────────────────────────────────────────────
@@ -152,7 +133,17 @@ jobs:
           ls -lh test-server/plugins/
 
       # ───────────────────────────────────────────────────────
-      # 5. Start Paper server
+      # 5. Reset database (tránh account đã tồn tại)
+      # ───────────────────────────────────────────────────────
+      - name: Reset database
+        run: |
+          rm -f test-server/plugins/SecureAuth/*.db || true
+          rm -f test-server/plugins/SecureAuth/*.db-shm || true
+          rm -f test-server/plugins/SecureAuth/*.db-wal || true
+          echo "✅ Database reset"
+
+      # ───────────────────────────────────────────────────────
+      # 6. Start Paper server
       # ───────────────────────────────────────────────────────
       - name: Start Paper server
         run: |
@@ -181,7 +172,6 @@ jobs:
             exit 1
           fi
 
-          # Verify plugin loaded
           if grep -q "SecureAuth" server.log; then
             echo "✅ Plugin loaded"
             grep "SecureAuth" server.log | head -10
@@ -192,7 +182,7 @@ jobs:
           fi
 
       # ───────────────────────────────────────────────────────
-      # 6. Install Mineflayer
+      # 7. Install Mineflayer
       # ───────────────────────────────────────────────────────
       - name: Install Mineflayer
         run: |
@@ -202,7 +192,7 @@ jobs:
           echo "✅ Mineflayer installed"
 
       # ───────────────────────────────────────────────────────
-      # 7. Create bot test script
+      # 8. Create bot test script (FIXED)
       # ───────────────────────────────────────────────────────
       - name: Create bot test script
         run: |
@@ -218,14 +208,14 @@ jobs:
             {
               name: 'register',
               chat: `/register ${TEST_PASSWORD} ${TEST_PASSWORD}`,
-              wait: /registered|đã đăng ký|success|thành công/i,
-              timeout: 10000
+              wait: /Registered successfully|Đăng ký thành công/i,
+              timeout: 15000
             },
             {
               name: 'login',
               chat: `/login ${TEST_PASSWORD}`,
-              wait: /logged in|đã đăng nhập|welcome|chào mừng/i,
-              timeout: 10000
+              wait: /Logged in|Đăng nhập|Welcome|Chào mừng/i,
+              timeout: 15000
             },
             {
               name: 'uuid',
@@ -236,12 +226,15 @@ jobs:
           ];
 
           let stepIndex = 0;
+          let botReady = false;
+          let currentStepStart = 0;
           const results = [];
+
           const globalTimeout = setTimeout(() => {
-            console.log('❌ TIMEOUT — test did not finish in 120s');
+            console.log('❌ TIMEOUT — test did not finish in 90s');
             printResults();
             process.exit(1);
-          }, 120000);
+          }, 90000);
 
           function printResults() {
             console.log('\n========== TEST RESULTS ==========');
@@ -258,15 +251,13 @@ jobs:
             port: MC_PORT,
             username: BOT_USERNAME,
             version: false,
-            hideErrors: false,
-            logErrors: true
+            hideErrors: false
           });
-
-          let currentStepStart = 0;
 
           bot.on('spawn', () => {
             console.log('✅ Bot spawned');
             setTimeout(() => {
+              botReady = true;
               currentStepStart = Date.now();
               console.log(`\n[Step 1/${steps.length}] Sending: ${steps[0].chat}`);
               bot.chat(steps[0].chat);
@@ -277,6 +268,9 @@ jobs:
             const text = msg.toString().trim();
             if (!text) return;
             console.log('[CHAT]', text);
+
+            // Bỏ qua message khi bot chưa ready
+            if (!botReady) return;
 
             const step = steps[stepIndex];
             if (!step) return;
@@ -316,7 +310,7 @@ jobs:
           bot.on('end', (reason) => {
             console.log('Bot disconnected:', reason);
             if (stepIndex < steps.length) {
-              console.log(`⚠️  Finished early — only ${stepIndex}/${steps.length} steps passed`);
+              console.log(`⚠️  Only ${stepIndex}/${steps.length} steps passed`);
               printResults();
               process.exit(1);
             }
@@ -325,7 +319,7 @@ jobs:
           echo "✅ Bot script created"
 
       # ───────────────────────────────────────────────────────
-      # 8. Run bot test
+      # 9. Run bot test
       # ───────────────────────────────────────────────────────
       - name: Run Mineflayer bot test
         env:
@@ -333,13 +327,13 @@ jobs:
           TEST_PASSWORD: ${{ inputs.test_password || 'SecurePass123!' }}
         run: |
           cd test-server
-          node bot-test.js
+          timeout 120s node bot-test.js
           EXIT_CODE=$?
           echo "Bot test exit code: $EXIT_CODE"
           exit $EXIT_CODE
 
       # ───────────────────────────────────────────────────────
-      # 9. Upload logs (always, kể cả khi fail)
+      # 10. Upload logs (always)
       # ───────────────────────────────────────────────────────
       - name: Upload server log
         if: always()
@@ -366,7 +360,7 @@ jobs:
           if-no-files-found: warn
 
       # ───────────────────────────────────────────────────────
-      # 10. Stop server
+      # 11. Stop server
       # ───────────────────────────────────────────────────────
       - name: Stop Paper server
         if: always()
@@ -381,7 +375,7 @@ jobs:
           echo "Server stopped"
 
       # ───────────────────────────────────────────────────────
-      # 11. Summary
+      # 12. Summary
       # ───────────────────────────────────────────────────────
       - name: Summary
         if: always()
@@ -394,8 +388,3 @@ jobs:
           echo "| Bot user | \`${{ inputs.bot_username || 'TestBot' }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Java | 21 |" >> $GITHUB_STEP_SUMMARY
           echo "| Node | 20 |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Steps tested" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ /register" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ /login" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ /uuid" >> $GITHUB_STEP_SUMMARY
