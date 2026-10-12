@@ -13,9 +13,10 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 
 /**
- * POST /auth/notify      Authorization: Bearer &lt;secret&gt;  {"uuid":"..."}
- * POST /auth/invalidate  Authorization: Bearer &lt;secret&gt;  {"uuid":"..."}
- * GET  /auth/health      → {"ok":true}
+ * POST /auth/notify | /auth/invalidate
+ * Body: {"uuid":"...","ts":...,"nonce":"...","sig":"..."}
+ * Authorization: Bearer <secret>
+ * sig = HMAC-SHA256(secret, uuid|ts|nonce|action)
  */
 public final class AuthNotifyServer {
 
@@ -64,9 +65,18 @@ public final class AuthNotifyServer {
 
     private void handleNotify(HttpExchange ex) throws IOException {
         if (!checkMethod(ex, "POST") || !checkAuth(ex)) return;
-        String uuidStr = extractJson(readBody(ex), "uuid");
-        if (uuidStr == null || uuidStr.isBlank()) {
-            respond(ex, 400, "{\"error\":\"missing uuid\"}");
+        String body = readBody(ex);
+        String uuidStr = extractJson(body, "uuid");
+        String err = NotifySigner.validate(
+                plugin.getPluginConfig().getBackendSecret(),
+                uuidStr,
+                extractJsonNumberOrString(body, "ts"),
+                extractJson(body, "nonce"),
+                extractJson(body, "sig"),
+                "notify");
+        if (err != null) {
+            plugin.getLogger().warn("[SecureAuthVelocity] notify rejected: {}", err);
+            respond(ex, 401, "{\"error\":\"" + err + "\"}");
             return;
         }
         try {
@@ -81,9 +91,17 @@ public final class AuthNotifyServer {
 
     private void handleInvalidate(HttpExchange ex) throws IOException {
         if (!checkMethod(ex, "POST") || !checkAuth(ex)) return;
-        String uuidStr = extractJson(readBody(ex), "uuid");
-        if (uuidStr == null || uuidStr.isBlank()) {
-            respond(ex, 400, "{\"error\":\"missing uuid\"}");
+        String body = readBody(ex);
+        String uuidStr = extractJson(body, "uuid");
+        String err = NotifySigner.validate(
+                plugin.getPluginConfig().getBackendSecret(),
+                uuidStr,
+                extractJsonNumberOrString(body, "ts"),
+                extractJson(body, "nonce"),
+                extractJson(body, "sig"),
+                "invalidate");
+        if (err != null) {
+            respond(ex, 401, "{\"error\":\"" + err + "\"}");
             return;
         }
         try {
@@ -125,7 +143,6 @@ public final class AuthNotifyServer {
         byte[] x = a.getBytes(StandardCharsets.UTF_8);
         byte[] y = b.getBytes(StandardCharsets.UTF_8);
         if (x.length != y.length) {
-            // still compare to avoid trivial timing on length-only (best-effort)
             return MessageDigest.isEqual(x, x) && false;
         }
         return MessageDigest.isEqual(x, y);
@@ -158,5 +175,23 @@ public final class AuthNotifyServer {
         int q2 = json.indexOf('"', q1 + 1);
         if (q2 < 0) return null;
         return json.substring(q1 + 1, q2);
+    }
+
+    /** ts may be number without quotes */
+    private static String extractJsonNumberOrString(String json, String key) {
+        String asStr = extractJson(json, key);
+        if (asStr != null) return asStr;
+        if (json == null) return null;
+        String search = "\"" + key + "\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx + search.length());
+        if (colon < 0) return null;
+        int i = colon + 1;
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+        int j = i;
+        while (j < json.length() && (Character.isDigit(json.charAt(j)) || json.charAt(j) == '-')) j++;
+        if (j > i) return json.substring(i, j);
+        return null;
     }
 }
