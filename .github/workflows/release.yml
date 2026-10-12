@@ -59,7 +59,7 @@ jobs:
             ${{ steps.ver.outputs.vel_jar }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: SecureAuth ${{ steps.ver.outputs.tag }}
