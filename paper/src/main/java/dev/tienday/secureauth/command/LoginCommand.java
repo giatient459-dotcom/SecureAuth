@@ -66,7 +66,7 @@ public class LoginCommand implements CommandExecutor {
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
                 case VALID -> {
-                    sessions.authenticate(playerUuid);
+                    sessions.authenticate(playerUuid, safeIp(player));
                     plugin.getSessionManager().restoreLocationAfterLogin(player);
                     AuthListener.revealPlayer(plugin, player);
                     TitleUtil.loginSuccess(player);
@@ -262,7 +262,7 @@ public class LoginCommand implements CommandExecutor {
     private void finalizeLogin(Player player) {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
-        plugin.getSessionManager().authenticate(uuid);
+        plugin.getSessionManager().authenticate(uuid, safeIp(player));
         plugin.getSessionManager().restoreLocationAfterLogin(player);
         AuthListener.revealPlayer(plugin, player);
         TitleUtil.loginSuccess(player);
@@ -283,7 +283,7 @@ public class LoginCommand implements CommandExecutor {
     public void completeLoginFromExternal(Player player, String reason) {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
-        plugin.getSessionManager().authenticate(uuid);
+        plugin.getSessionManager().authenticate(uuid, safeIp(player));
         plugin.getSessionManager().restoreLocationAfterLogin(player);
         AuthListener.revealPlayer(plugin, player);
         if ("premium".equals(reason)) {
@@ -308,10 +308,15 @@ public class LoginCommand implements CommandExecutor {
     private void notifyVelocity(String uuid) {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             String velocityUrl = plugin.getConfigManager().getVelocityNotifyUrl();
-            if (velocityUrl == null || velocityUrl.isBlank()) return; // Velocity chưa config
+            if (velocityUrl == null || velocityUrl.isBlank()) return;
 
             String secret = plugin.getConfigManager().getBackendSecret();
-            String body   = "{\"uuid\":\"" + uuid + "\"}";
+            if (secret == null || secret.isBlank() || secret.startsWith("CHANGE_ME")) {
+                plugin.getLogger().warning("[SecureAuth] backend-secret not set — skip proxy notify");
+                return;
+            }
+            // HMAC + ts + nonce — anti-replay
+            String body = dev.tienday.secureauth.util.NotifySigner.buildBody(secret, uuid, "notify");
 
             try {
                 java.net.URL url = java.net.URI.create(velocityUrl).toURL();
@@ -330,11 +335,11 @@ public class LoginCommand implements CommandExecutor {
                 conn.disconnect();
                 if (status != 200) {
                     plugin.getLogger().warning(
-                            "[SecureAuth] Velocity notify returned HTTP " + status);
+                            "[SecureAuth] Proxy notify returned HTTP " + status);
                 }
             } catch (Exception e) {
                 plugin.getLogger().warning(
-                        "[SecureAuth] Failed to notify Velocity: " + e.getMessage());
+                        "[SecureAuth] Failed to notify proxy: " + e.getMessage());
             }
         });
     }
