@@ -4,7 +4,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -12,9 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 
 /**
- * HTTP endpoint Paper calls after successful login:
- * POST /auth/notify  Authorization: Bearer <backend-secret>
- * Body: {"uuid":"...","authenticated":true}
+ * POST /auth/notify — body with uuid + ts + nonce + sig (HMAC).
  */
 public final class AuthNotifyServer {
 
@@ -66,25 +63,25 @@ public final class AuthNotifyServer {
             String auth = ex.getRequestHeaders().getFirst("Authorization");
             String secret = plugin.getPluginConfig().getBackendSecret();
             String expected = "Bearer " + secret;
-            if (secret.isBlank() || auth == null || !constantTimeEquals(auth, expected)) {
+            if (secret.isBlank() || auth == null || !NotifySigner.constantTimeEq(auth, expected)) {
                 respond(ex, 401, "unauthorized");
                 return;
             }
             String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String uuidStr = extractJsonString(body, "uuid");
-            if (uuidStr == null || uuidStr.isBlank()) {
-                respond(ex, 400, "missing uuid");
+            String err = NotifySigner.validate(
+                    secret, uuidStr,
+                    extractTs(body),
+                    extractJsonString(body, "nonce"),
+                    extractJsonString(body, "sig"),
+                    "notify");
+            if (err != null) {
+                plugin.getLogger().warning("[SecureAuthBungee] notify rejected: " + err);
+                respond(ex, 401, err);
                 return;
             }
-            UUID uuid;
-            try {
-                uuid = UUID.fromString(uuidStr.trim());
-            } catch (IllegalArgumentException e) {
-                respond(ex, 400, "bad uuid");
-                return;
-            }
-            boolean authed = body.contains("\"authenticated\":true")
-                    || body.contains("\"authenticated\": true");
+            UUID uuid = UUID.fromString(uuidStr.trim());
+            boolean authed = !body.contains("\"authenticated\":false");
             if (authed) {
                 plugin.getSessionStore().markAuthenticated(uuid);
                 plugin.getLogger().info("[SecureAuthBungee] Auth OK for " + uuid);
@@ -106,16 +103,6 @@ public final class AuthNotifyServer {
         }
     }
 
-    private static boolean constantTimeEquals(String a, String b) {
-        if (a == null || b == null) return false;
-        byte[] x = a.getBytes(StandardCharsets.UTF_8);
-        byte[] y = b.getBytes(StandardCharsets.UTF_8);
-        if (x.length != y.length) return false;
-        int r = 0;
-        for (int i = 0; i < x.length; i++) r |= x[i] ^ y[i];
-        return r == 0;
-    }
-
     private static String extractJsonString(String json, String key) {
         if (json == null) return null;
         String needle = "\"" + key + "\"";
@@ -128,5 +115,20 @@ public final class AuthNotifyServer {
         int q2 = json.indexOf('"', q1 + 1);
         if (q2 < 0) return null;
         return json.substring(q1 + 1, q2);
+    }
+
+    private static String extractTs(String json) {
+        String s = extractJsonString(json, "ts");
+        if (s != null) return s;
+        if (json == null) return null;
+        int idx = json.indexOf("\"ts\"");
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return null;
+        int i = colon + 1;
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+        int j = i;
+        while (j < json.length() && Character.isDigit(json.charAt(j))) j++;
+        return j > i ? json.substring(i, j) : null;
     }
 }
