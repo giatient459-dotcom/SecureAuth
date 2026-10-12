@@ -11,6 +11,10 @@ locale: en
 security:
   # Seconds to wait for login before kick
   session-timeout: 300
+  # Bind in-memory session to login IP (anti session-hijack). true = recommended
+  bind-session-ip: true
+  # AFK session timeout after login (seconds, 0 = disabled). 1800 = 30 min
+  session-idle-timeout: 1800
   # Show countdown on action bar
   login-countdown-actionbar: true
   # Grace seconds after login (avoid kick/TP on lag)
