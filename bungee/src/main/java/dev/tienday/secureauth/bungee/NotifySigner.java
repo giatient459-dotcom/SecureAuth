@@ -71,7 +71,7 @@ public final class NotifySigner {
             return "replay";
         }
         String expected = sign(secret, uuid, ts, nonce, action);
-        if (!constantTimeEq(expected, sig)) {
+        if (!constantTimeEquals(expected, sig)) {
             USED_NONCES.remove(nonce);
             return "sig";
         }
@@ -87,7 +87,12 @@ public final class NotifySigner {
         }
     }
 
+    /** @deprecated use constantTimeEquals */
     public static boolean constantTimeEq(String a, String b) {
+        return constantTimeEquals(a, b);
+    }
+
+    public static boolean constantTimeEquals(String a, String b) {
         if (a == null || b == null) return false;
         byte[] x = a.getBytes(StandardCharsets.UTF_8);
         byte[] y = b.getBytes(StandardCharsets.UTF_8);
