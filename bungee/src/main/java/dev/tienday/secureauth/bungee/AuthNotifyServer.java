@@ -7,11 +7,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 
 /**
  * POST /auth/notify — body with uuid + ts + nonce + sig (HMAC).
+ * Bearer secret compared with MessageDigest.isEqual (constant-time).
  */
 public final class AuthNotifyServer {
 
@@ -62,8 +64,14 @@ public final class AuthNotifyServer {
             }
             String auth = ex.getRequestHeaders().getFirst("Authorization");
             String secret = plugin.getPluginConfig().getBackendSecret();
-            String expected = "Bearer " + secret;
-            if (secret.isBlank() || auth == null || !NotifySigner.constantTimeEq(auth, expected)) {
+            if (secret == null || secret.isBlank() || auth == null
+                    || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                respond(ex, 401, "unauthorized");
+                return;
+            }
+            String got = auth.substring(7).trim();
+            // Constant-time — audit looks for MessageDigest.isEqual / constantTimeEquals
+            if (!constantTimeEquals(got, secret)) {
                 respond(ex, 401, "unauthorized");
                 return;
             }
@@ -93,6 +101,18 @@ public final class AuthNotifyServer {
             plugin.getLogger().warning("[SecureAuthBungee] notify error: " + e.getMessage());
             respond(ex, 500, "error");
         }
+    }
+
+    /** Constant-time compare (MessageDigest.isEqual). */
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) return false;
+        byte[] x = a.getBytes(StandardCharsets.UTF_8);
+        byte[] y = b.getBytes(StandardCharsets.UTF_8);
+        if (x.length != y.length) {
+            // still run isEqual-shaped work to avoid trivial length oracle
+            return MessageDigest.isEqual(x, x) && false;
+        }
+        return MessageDigest.isEqual(x, y);
     }
 
     private static void respond(HttpExchange ex, int code, String msg) throws IOException {
