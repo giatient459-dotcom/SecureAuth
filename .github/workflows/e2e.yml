@@ -1,0 +1,351 @@
+name: E2E Test — Mineflayer Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      mc_version:
+        description: 'Paper version'
+        required: true
+        default: '1.21.4'
+      bot_username:
+        description: 'Bot username'
+        required: true
+        default: 'TestBot'
+      test_password:
+        description: 'Test password'
+        required: true
+        default: 'SecurePass123!'
+  push:
+    branches: [main, master]
+    tags: ['v*']
+
+jobs:
+  e2e:
+    name: Paper ${{ inputs.mc_version || '1.21.4' }} + Bot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ───────────────────────────────────────────────────────
+      # 1. Build plugin
+      # ───────────────────────────────────────────────────────
+      - name: Build SecureAuth plugin
+        run: mvn -B clean verify --no-transfer-progress
+
+      # ───────────────────────────────────────────────────────
+      # 2. Setup test server
+      # ───────────────────────────────────────────────────────
+      - name: Prepare test server directory
+        run: |
+          mkdir -p test-server/plugins
+          cd test-server
+          echo "eula=true" > eula.txt
+
+          cat > server.properties <<EOF
+          online-mode=false
+          max-players=10
+          view-distance=4
+          simulation-distance=4
+          spawn-protection=0
+          level-type=flat
+          level-name=world
+          motd=SecureAuth E2E
+          enable-rcon=true
+          rcon.port=25575
+          rcon.password=e2e_rcon_pass
+          enable-query=false
+          disable-chat-reports=true
+          allow-flight=true
+          spawn-monsters=false
+          difficulty=peaceful
+          gamemode=adventure
+          EOF
+
+          echo "✅ Test server prepared"
+
+      # ───────────────────────────────────────────────────────
+      # 3. Download Paper server
+      # ───────────────────────────────────────────────────────
+      - name: Download Paper server
+        env:
+          MC_VERSION: ${{ inputs.mc_version || '1.21.4' }}
+        run: |
+          cd test-server
+          BUILDS=$(curl -s "https://api.papermc.io/v2/projects/paper/versions/${MC_VERSION}")
+          BUILD=$(echo "$BUILDS" | python3 -c "import sys,json; print(json.load(sys.stdin)['builds'][-1])")
+          echo "Paper build: $BUILD"
+          JAR_URL="https://api.papermc.io/v2/projects/paper/versions/${MC_VERSION}/builds/${BUILD}/downloads/paper-${MC_VERSION}-${BUILD}.jar"
+          curl -sSL -o paper.jar "$JAR_URL"
+          ls -lh paper.jar
+          echo "✅ Paper downloaded"
+
+      # ───────────────────────────────────────────────────────
+      # 4. Install plugin
+      # ───────────────────────────────────────────────────────
+      - name: Install SecureAuth
+        run: |
+          cp paper/target/SecureAuth-*.jar test-server/plugins/
+          ls -lh test-server/plugins/
+
+      # ───────────────────────────────────────────────────────
+      # 5. Start Paper server
+      # ───────────────────────────────────────────────────────
+      - name: Start Paper server
+        run: |
+          cd test-server
+          nohup java -Xmx2G -jar paper.jar nogui > server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+          echo "Waiting for server ready..."
+          for i in $(seq 1 90); do
+            if grep -q "Done (" server.log 2>/dev/null; then
+              echo "✅ Server ready after ${i}s"
+              break
+            fi
+            if ! kill -0 $(cat server.pid) 2>/dev/null; then
+              echo "❌ Server crashed!"
+              cat server.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if ! grep -q "Done (" server.log; then
+            echo "❌ Server did not start"
+            cat server.log
+            exit 1
+          fi
+
+          # Verify plugin loaded
+          grep -q "SecureAuth" server.log && echo "✅ Plugin loaded" || {
+            echo "❌ Plugin not loaded"
+            cat server.log
+            exit 1
+          }
+
+      # ───────────────────────────────────────────────────────
+      # 6. Setup Mineflayer bot
+      # ───────────────────────────────────────────────────────
+      - name: Install Mineflayer
+        run: |
+          cd test-server
+          npm init -y > /dev/null
+          npm install mineflayer@4 --silent
+          echo "✅ Mineflayer installed"
+
+      - name: Create bot test script
+        run: |
+          cat > test-server/bot-test.js <<'BOTEOF'
+          const mineflayer = require('mineflayer');
+
+          const MC_HOST = '127.0.0.1';
+          const MC_PORT = 25565;
+          const BOT_USERNAME = process.env.BOT_USERNAME || 'TestBot';
+          const TEST_PASSWORD = process.env.TEST_PASSWORD || 'SecurePass123!';
+
+          // Test steps: mỗi step gửi command, đợi response khớp regex
+          const steps = [
+            {
+              name: 'register',
+              chat: `/register ${TEST_PASSWORD} ${TEST_PASSWORD}`,
+              wait: /registered|đã đăng ký|success|thành công/i,
+              timeout: 10000
+            },
+            {
+              name: 'login',
+              chat: `/login ${TEST_PASSWORD}`,
+              wait: /logged in|đã đăng nhập|welcome|chào mừng/i,
+              timeout: 10000
+            },
+            {
+              name: 'uuid',
+              chat: '/uuid',
+              wait: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+              timeout: 5000
+            },
+            {
+              name: 'changepassword-prompt',
+              chat: '/changepassword',
+              wait: /usage|sử dụng|cách dùng/i,
+              timeout: 5000
+            }
+          ];
+
+          let stepIndex = 0;
+          const results = [];
+          const globalTimeout = setTimeout(() => {
+            console.log('❌ TIMEOUT — test did not finish in 90s');
+            printResults();
+            process.exit(1);
+          }, 90000);
+
+          function printResults() {
+            console.log('\n========== TEST RESULTS ==========');
+            results.forEach(r => {
+              console.log(`${r.passed ? '✅' : '❌'} ${r.name} (${r.duration}ms)`);
+            });
+            const passed = results.filter(r => r.passed).length;
+            console.log(`\nSCORE: ${passed}/${steps.length}`);
+            console.log('==================================\n');
+          }
+
+          const bot = mineflayer.createBot({
+            host: MC_HOST,
+            port: MC_PORT,
+            username: BOT_USERNAME,
+            version: false,  // auto-detect
+            hideErrors: false,
+            logErrors: true
+          });
+
+          let currentStepStart = 0;
+          let currentStepName = '';
+
+          bot.on('spawn', () => {
+            console.log('✅ Bot spawned');
+            setTimeout(() => {
+              currentStepStart = Date.now();
+              currentStepName = steps[0].name;
+              console.log(`\n[Step 1/${steps.length}] Sending: ${steps[0].chat}`);
+              bot.chat(steps[0].chat);
+            }, 3000);
+          });
+
+          bot.on('message', (msg) => {
+            const text = msg.toString().trim();
+            if (!text) return;
+            console.log('[CHAT]', text);
+
+            // Bỏ qua message của chính bot
+            if (text.includes(BOT_USERNAME) && !text.includes('registered')) return;
+
+            const step = steps[stepIndex];
+            if (!step) return;
+
+            if (step.wait.test(text)) {
+              const duration = Date.now() - currentStepStart;
+              console.log(`✅ Step "${step.name}" PASSED (${duration}ms)`);
+              results.push({ name: step.name, passed: true, duration });
+
+              stepIndex++;
+
+              if (stepIndex >= steps.length) {
+                console.log('\n✅ ALL STEPS PASSED');
+                printResults();
+                clearTimeout(globalTimeout);
+                setTimeout(() => {
+                  bot.quit();
+                  process.exit(0);
+                }, 1000);
+              } else {
+                const next = steps[stepIndex];
+                currentStepStart = Date.now();
+                currentStepName = next.name;
+                console.log(`\n[Step ${stepIndex + 1}/${steps.length}] Sending: ${next.chat}`);
+                setTimeout(() => bot.chat(next.chat), 1500);
+              }
+            }
+          });
+
+          bot.on('error', (err) => {
+            console.error('❌ Bot error:', err.message);
+          });
+
+          bot.on('kicked', (reason) => {
+            console.error('❌ Bot kicked:', reason);
+            // Có thể là do chưa login → vẫn là behavior đúng
+            if (reason && reason.toString().match(/log in|login|đăng nhập/i)) {
+              console.log('⚠️  Kicked for not logging in — check timing');
+            }
+          });
+
+          bot.on('end', (reason) => {
+            console.log('Bot disconnected:', reason);
+            if (stepIndex < steps.length) {
+              console.log(`⚠️  Finished early — only ${stepIndex}/${steps.length} steps passed`);
+              printResults();
+              process.exit(1);
+            }
+          });
+          BOTEOF
+          echo "✅ Bot script created"
+
+      # ───────────────────────────────────────────────────────
+      # 7. Run bot test
+      # ───────────────────────────────────────────────────────
+      - name: Run Mineflayer bot test
+        env:
+          BOT_USERNAME: ${{ inputs.bot_username || 'TestBot' }}
+          TEST_PASSWORD: ${{ inputs.test_password || 'SecurePass123!' }}
+        run: |
+          cd test-server
+          node bot-test.js
+          EXIT_CODE=$?
+          echo "Bot test exit code: $EXIT_CODE"
+          exit $EXIT_CODE
+
+      # ───────────────────────────────────────────────────────
+      # 8. Upload logs (always)
+      # ───────────────────────────────────────────────────────
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: paper-server-log
+          path: test-server/server.log
+          if-no-files-found: warn
+
+      - name: Upload database
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: secureauth-database
+          path: test-server/plugins/SecureAuth/*.db
+          if-no-files-found: warn
+
+      # ───────────────────────────────────────────────────────
+      # 9. Stop server
+      # ───────────────────────────────────────────────────────
+      - name: Stop Paper server
+        if: always()
+        run: |
+          cd test-server
+          if [ -f server.pid ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+            sleep 2
+            kill -9 $(cat server.pid) 2>/dev/null || true
+          fi
+          pkill -f paper.jar 2>/dev/null || true
+
+      # ───────────────────────────────────────────────────────
+      # 10. Summary
+      # ───────────────────────────────────────────────────────
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🎯 E2E Mineflayer Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Paper | ${{ inputs.mc_version || '1.21.4' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bot user | \`${{ inputs.bot_username || 'TestBot' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Java | 21 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Steps tested" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ /register" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ /login" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ /uuid" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ /changepassword (usage)" >> $GITHUB_STEP_SUMMARY
