@@ -490,50 +490,41 @@ public class DatabaseManager {
     }
 
     public Optional<LinkConsumeResult> consumeLinkCode(String code) {
-        final String sel = "SELECT uuid, discord_id, expires_at FROM sa_link_codes WHERE code = ? LIMIT 1";
-        final String del = "DELETE FROM sa_link_codes WHERE code = ?";
+        // Atomic consume: DELETE only if unexpired (Issue #3 race)
+        final String sql =
+                "DELETE FROM sa_link_codes WHERE code = ? AND expires_at > ? RETURNING uuid, discord_id";
         synchronized (this) {
             Connection conn;
             try { conn = getConn(); } catch (SQLException e) {
                 plugin.getLogger().log(Level.SEVERE, "consumeLinkCode getConn error", e);
                 return Optional.empty();
             }
-            try {
-                conn.setAutoCommit(false);
-                LinkConsumeResult result = null;
-                try {
-                    try (PreparedStatement ps = conn.prepareStatement(sel)) {
-                        ps.setString(1, code);
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next() && System.currentTimeMillis() <= rs.getLong("expires_at")) {
-                                result = new LinkConsumeResult(
-                                        rs.getString("uuid"),
-                                        rs.getString("discord_id")
-                                );
-                            }
-                        }
+            long now = System.currentTimeMillis();
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, code);
+                ps.setLong(2, now);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return Optional.of(new LinkConsumeResult(
+                                rs.getString("uuid"),
+                                rs.getString("discord_id")));
                     }
-                    try (PreparedStatement ps = conn.prepareStatement(del)) {
-                        ps.setString(1, code);
-                        ps.executeUpdate();
-                    }
-                    conn.commit();
-                } catch (SQLException e) {
-                    try { conn.rollback(); } catch (SQLException ignored) {}
-                    throw e;
-                } finally {
-                    try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
                 }
-                return Optional.ofNullable(result);
+                // Also delete expired code if present
+                try (PreparedStatement purge = conn.prepareStatement(
+                        "DELETE FROM sa_link_codes WHERE code = ?")) {
+                    purge.setString(1, code);
+                    purge.executeUpdate();
+                }
+                return Optional.empty();
             } catch (SQLException e) {
                 plugin.getLogger().log(Level.SEVERE, "consumeLinkCode error", e);
+                return Optional.empty();
             }
         }
-        return Optional.empty();
     }
 
-    // ── IP limit ──────────────────────────────────────────────────────────────
-
+    
     public int countAccountsByIp(String ip) {
         if (ip == null || ip.isBlank() || "unknown".equals(ip)) return 0;
         final String sql = "SELECT COUNT(*) FROM sa_players WHERE register_ip = ? AND disabled = 0";
