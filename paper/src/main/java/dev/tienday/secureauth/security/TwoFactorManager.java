@@ -231,7 +231,9 @@ public class TwoFactorManager {
     }
 
     private boolean postBot(String path, String discordId, String body) {
-        String apiUrl    = plugin.getConfigManager().getBotApiUrl();
+        if (apiUrl.startsWith("http://") && !apiUrl.contains("127.0.0.1") ...) {
+    plugin.getLogger().warning("... prefer HTTPS ...");
+}
         String apiSecret = plugin.getConfigManager().getBotApiSecret();
         int    timeoutMs = plugin.getConfigManager().getBotApiTimeout();
 
