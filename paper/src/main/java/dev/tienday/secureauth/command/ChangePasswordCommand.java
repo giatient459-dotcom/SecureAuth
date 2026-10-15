@@ -2,7 +2,9 @@ package dev.tienday.secureauth.command;
 
 import dev.tienday.secureauth.SecureAuthPlugin;
 import dev.tienday.secureauth.database.PlayerData;
+import dev.tienday.secureauth.security.PasswordPolicy;
 import dev.tienday.secureauth.security.PasswordUtil;
+import dev.tienday.secureauth.util.IpUtil;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
@@ -53,15 +55,12 @@ public class ChangePasswordCommand implements CommandExecutor {
             return true;
         }
 
-        if (plugin.getConfigManager().isPasswordRequireMixed()) {
-            boolean hasLetter = newPass.chars().anyMatch(Character::isLetter);
-            boolean hasDigit  = newPass.chars().anyMatch(Character::isDigit);
-            if (!hasLetter || !hasDigit) {
-                player.sendMessage(plugin.getConfigManager().getMessage("password-weak")
-                        .replaceText(b -> b.matchLiteral("{min}")
-                                .replacement(String.valueOf(minLen))));
-                return true;
-            }
+        double minEntropy = plugin.getConfig().getDouble("security.password.min-entropy-bits", 0);
+        if (!PasswordPolicy.isStrong(newPass, minLen,
+                plugin.getConfigManager().isPasswordRequireMixed(), minEntropy)) {
+            player.sendMessage(plugin.getConfigManager().getMessage("password-weak")
+                    .replaceText(b -> b.matchLiteral("{min}").replacement(String.valueOf(minLen))));
+            return true;
         }
 
         if (!newPass.equals(confirm)) {
@@ -122,11 +121,6 @@ public class ChangePasswordCommand implements CommandExecutor {
     }
 
     private static String safeIp(Player player) {
-        try {
-            if (player.getAddress() != null && player.getAddress().getAddress() != null) {
-                return player.getAddress().getAddress().getHostAddress();
-            }
-        } catch (Exception ignored) {}
-        return "unknown";
+        return IpUtil.safeIp(player);
     }
 }
