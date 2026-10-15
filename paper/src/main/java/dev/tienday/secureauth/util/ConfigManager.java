@@ -69,6 +69,20 @@ public class ConfigManager {
     }
 
     public void validate() {
+        String botUrl = getBotApiUrl();
+        if (botUrl != null && botUrl.startsWith("http://")
+                && !botUrl.contains("127.0.0.1") && !botUrl.contains("localhost")) {
+            plugin.getLogger().warning(
+                    "[SecureAuth] discord-bot.api-url is HTTP to a remote host — use HTTPS in production.");
+        }
+        if (getPasswordMinLength() < 8) {
+            plugin.getLogger().warning("[SecureAuth] security.password.min-length < 8 is weak.");
+        }
+        if (getTwoFaCodeLength() < 8) {
+            plugin.getLogger().warning(
+                    "[SecureAuth] security.two-fa-code-length < 8 — runtime clamps to 8.");
+        }
+
         int rawMem = plugin.getConfig().getInt("security.argon2-memory-kb", 65536);
         int rawIt  = plugin.getConfig().getInt("security.argon2-iterations", 3);
         int rawPar = plugin.getConfig().getInt("security.argon2-parallelism", 4);
