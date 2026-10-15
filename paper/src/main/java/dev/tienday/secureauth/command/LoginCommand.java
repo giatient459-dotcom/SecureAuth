@@ -6,6 +6,7 @@ import dev.tienday.secureauth.listener.AuthListener;
 import dev.tienday.secureauth.security.PasswordUtil;
 import dev.tienday.secureauth.security.RateLimiter;
 import dev.tienday.secureauth.security.TwoFactorManager;
+import dev.tienday.secureauth.util.IpUtil;
 import dev.tienday.secureauth.util.SessionManager;
 import dev.tienday.secureauth.util.TitleUtil;
 import org.bukkit.command.Command;
@@ -62,6 +63,13 @@ public class LoginCommand implements CommandExecutor {
                 return true;
             }
             String code = args[args.length == 1 ? 0 : 1];
+
+            // Issue #6 — rate-limit 2FA verify (3 / 60s)
+            if (!rateLimiter.tryAcquireToken("2fa:" + uuid, 3, 60_000L)) {
+                player.sendMessage(plugin.getConfigManager().getMessage("too-many-attempts")
+                        .replaceText(b -> b.matchLiteral("{seconds}").replacement("60")));
+                return true;
+            }
 
             TwoFactorManager.VerifyResult result = twoFaManager.verifyCode(uuid, code);
             switch (result) {
@@ -377,11 +385,7 @@ public class LoginCommand implements CommandExecutor {
     }
 
     private static String safeIp(Player player) {
-        try {
-            if (player.getAddress() != null && player.getAddress().getAddress() != null) {
-                return player.getAddress().getAddress().getHostAddress();
-            }
-        } catch (Exception ignored) { }
-        return "unknown";
+        return IpUtil.safeIp(player);
     }
 }
+
