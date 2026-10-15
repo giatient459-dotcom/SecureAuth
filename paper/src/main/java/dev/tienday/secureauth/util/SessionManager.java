@@ -1,5 +1,6 @@
 package dev.tienday.secureauth.util;
 
+
 import dev.tienday.secureauth.SecureAuthPlugin;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
