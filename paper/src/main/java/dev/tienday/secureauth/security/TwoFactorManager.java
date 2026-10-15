@@ -53,7 +53,7 @@ public class TwoFactorManager {
             return SendResult.COOLDOWN;
         }
 
-        int length = plugin.getConfigManager().getTwoFaCodeLength();
+        int length = Math.max(8, plugin.getConfigManager().getTwoFaCodeLength()); // Issue #6 min 8
         int expirySec = plugin.getConfigManager().getTwoFaCodeExpiry();
 
         String code = generateCode(length);
@@ -238,6 +238,15 @@ public class TwoFactorManager {
         if (!discordId.matches("\\d{5,32}")) {
             plugin.getLogger().warning("Refusing bot DM: invalid discord_id format");
             return false;
+        }
+
+        
+        String apiUrl = plugin.getConfigManager().getBotApiUrl();
+        if (apiUrl != null && apiUrl.startsWith("http://")
+                && !apiUrl.contains("127.0.0.1") && !apiUrl.contains("localhost")) {
+            plugin.getLogger().warning(
+                    "[SecureAuth] discord-bot.api-url uses plain HTTP to a non-local host — "
+                    + "prefer HTTPS in production (TLS).");
         }
 
         HttpURLConnection conn = null;
