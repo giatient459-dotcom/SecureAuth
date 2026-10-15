@@ -1,5 +1,7 @@
 package dev.tienday.secureauth.listener;
 
+import dev.tienday.secureauth.util.IpUtil;
+
 import dev.tienday.secureauth.SecureAuthPlugin;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
@@ -163,11 +165,7 @@ public class OPGuardListener implements Listener {
     }
 
     private static String safeIp(Player player) {
-        try {
-            if (player.getAddress() != null && player.getAddress().getAddress() != null)
-                return player.getAddress().getAddress().getHostAddress();
-        } catch (Exception ignored) {}
-        return "unknown";
+        return IpUtil.safeIp(player);
     }
 
     private String sanitize(String s) {
