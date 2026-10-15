@@ -1,87 +1,90 @@
 # ============================================================
-# SecureAuth — config.yml (đầy đủ)
-# SQLite: plugins/SecureAuth/secureauth.db (tự tạo)
+# SecureAuth — config.yml (full)
+# SQLite: plugins/SecureAuth/secureauth.db (auto-created)
 # Lang: plugins/SecureAuth/lang/en.yml | vi.yml
-# Sau khi sửa: /authadmin reload (hoặc restart)
+# After edit: /authadmin reload (or restart)
 # ============================================================
 
-# Ngôn ngữ tin nhắn: en | vi
+# Message language: en | vi
 locale: en
 
 # ------------------------------------------------------------
-# Bảo mật / đăng nhập
+# Security / login
 # ------------------------------------------------------------
 security:
-  # Giây chờ login trước khi kick (chưa đăng nhập)
+  # Seconds to wait for login before kick (not logged in yet)
   session-timeout: 300
 
-  # Gắn session với IP lúc login (chống session hijack). Nên để true
+  # Bind in-memory session to login IP (anti session-hijack). Keep true
   bind-session-ip: true
 
-  # Timeout AFK sau khi đã login (giây). 0 = tắt. 1800 = 30 phút
+  # AFK timeout after successful login (seconds). 0 = off. 1800 = 30 min
   session-idle-timeout: 1800
 
-  # Đếm ngược action bar khi chưa login
+  # Action-bar countdown while not logged in
   login-countdown-actionbar: true
 
-  # Giây “ân hạn” sau login (tránh kick/TP khi lag)
+  # Grace seconds after login (avoid kick/TP on lag)
   login-grace-seconds: 3
 
-  # Sai mật khẩu / 2FA quá số lần → khóa tạm
+  # Wrong password / 2FA too many times → temporary lockout
   max-login-attempts: 5
   lockout-duration: 300
 
-  # Giới hạn đăng ký theo IP
+  # Register limits per IP
   max-accounts-per-ip: 3
   register-attempts-per-10min: 5
   link-attempts-per-10min: 10
 
-  # Captcha toán đơn giản khi /register (true = bật)
+  # Simple math captcha on /register (TTL 5 min, max 3 tries when enabled)
   register-captcha: false
 
   password:
-    min-length: 8
-    # true = bắt buộc có chữ hoa + số
-    require-mixed: false
+    min-length: 10
+    # true = require letters + digits (and upper+lower when length >= 12)
+    require-mixed: true
+    # 0 = off; 40–50 = stronger entropy check (PasswordPolicy)
+    min-entropy-bits: 40
 
-  # Nhớ IP X giờ → bỏ qua 2FA (cùng IP)
+  # Remember IP for X hours → skip 2FA (same IP)
   ip-session:
     enabled: true
     hours: 72
-    # Discord nút Xác nhận / Từ chối khi IP mới
+    # Discord Confirm / Deny buttons on new IP
     confirm-buttons: true
     confirm-expiry-seconds: 300
 
-  # Mã 2FA Discord DM
+  # Discord DM 2FA codes (runtime clamps length to min 8)
   two-fa-code-expiry: 120
-  two-fa-code-length: 6
+  two-fa-code-length: 8
   two-fa-min-resend-interval: 15
 
-  # true = tài khoản premium (online UUID) + đã register → auto-login
+  # true = premium (online UUID) + registered → auto-login
   premium-auto-login: false
 
-  # Argon2 — không đổi trừ khi hiểu rõ
+  # Argon2 — do not change unless you know what you are doing
   argon2-iterations: 3
   argon2-memory-kb: 65536
   argon2-parallelism: 4
 
 # ------------------------------------------------------------
 # Discord bot (2FA)
-# api-url     = Paper gọi BOT
-# plugin-http = BOT gọi Paper (approve IP, v.v.)
-# api-secret  phải khớp với bot
+# api-url     = Paper → BOT
+# plugin-http = BOT → Paper (IP approve, etc.)
+# api-secret must match the bot
+# Prefer https:// for remote hosts (HTTP only OK for 127.0.0.1)
 # ------------------------------------------------------------
 discord-bot:
   api-url: "http://127.0.0.1:8765"
   api-secret: "CHANGE_ME_STRONG_SECRET"
   api-timeout-ms: 5000
   plugin-http-port: 20334
-  # 127.0.0.1 = chỉ local | 0.0.0.0 = bot remote (cần secret mạnh + firewall)
+  # 127.0.0.1 = local only | 0.0.0.0 = remote bot (strong secret + firewall)
   plugin-http-bind: "127.0.0.1"
 
 # ------------------------------------------------------------
-# Login lobby — đứng chỗ muốn rồi /authsetspawn
-# (hoặc điền world + tọa độ thủ công)
+# Login lobby — stand there and /authsetspawn
+# (or fill world + coordinates manually)
 # ------------------------------------------------------------
 login-world:
   world: ""
@@ -94,30 +97,30 @@ login-world:
 
 # ------------------------------------------------------------
 # Velocity / BungeeCord companion
-# Paper POST notify sau login (HMAC + ts + nonce chống replay)
-# notify-url trống = không dùng proxy auth bridge
-# backend-secret phải GIỐNG config Velocity/Bungee
+# Paper POST /auth/notify after login (HMAC + ts + nonce anti-replay)
+# Empty notify-url = no proxy auth bridge
+# backend-secret MUST match Velocity/Bungee config
 # ------------------------------------------------------------
 velocity:
   notify-url: "http://127.0.0.1:20334/auth/notify"
   backend-secret: "CHANGE_ME_SAME_AS_VELOCITY_SECRET"
 
 # ------------------------------------------------------------
-# Backup SQLite
+# SQLite backup
 # ------------------------------------------------------------
 backup:
   interval-hours: 24
   keep-count: 7
 
 # ------------------------------------------------------------
-# Discord webhook (cảnh báo lockout / admin)
+# Discord webhook (lockout / admin alerts)
 # ------------------------------------------------------------
 alerts:
   webhook-enabled: false
   discord-webhook-url: ""
 
 # ------------------------------------------------------------
-# Chặn OP / lệnh nguy hiểm
+# OP / dangerous command guards
 # ------------------------------------------------------------
 op-guard:
   block-op-commands: true
@@ -132,20 +135,20 @@ dangerous-commands:
     - "reload"
 
 # ------------------------------------------------------------
-# bStats 
+# bStats (plugin id hardcoded in jar — enable/disable only)
 # ------------------------------------------------------------
 metrics:
   enabled: true
 
 # ------------------------------------------------------------
-# ProtocolLib soft-depend (chặn packet lệnh/tab khi chưa login)
-# Không cài ProtocolLib → plugin vẫn chạy bình thường
+# ProtocolLib soft-depend (block command/tab packets pre-login)
+# No ProtocolLib installed → plugin still runs normally
 # ------------------------------------------------------------
 protocolib:
   enabled: true
 
 # ------------------------------------------------------------
-# Ghi đè message (ưu tiên sửa lang/en.yml hoặc lang/vi.yml)
-# Key có trong messages. sẽ override file lang
+# Message overrides (prefer editing lang/en.yml or lang/vi.yml)
+# Keys under messages. override the lang file for that key only
 # ------------------------------------------------------------
 messages: {}
