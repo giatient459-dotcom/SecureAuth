@@ -1,5 +1,7 @@
 package dev.tienday.secureauth.command;
 
+import dev.tienday.secureauth.util.IpUtil;
+
 import dev.tienday.secureauth.SecureAuthPlugin;
 import dev.tienday.secureauth.security.RateLimiter;
 import org.bukkit.command.Command;
@@ -179,11 +181,7 @@ public class LinkCommand implements CommandExecutor {
     }
 
     private static String safeIp(Player player) {
-        try {
-            if (player.getAddress() != null && player.getAddress().getAddress() != null)
-                return player.getAddress().getAddress().getHostAddress();
-        } catch (Exception ignored) {}
-        return "unknown";
+        return IpUtil.safeIp(player);
     }
 
     // ── Result record ─────────────────────────────────────────────────────────
