@@ -231,20 +231,20 @@ public class TwoFactorManager {
     }
 
     private boolean postBot(String path, String discordId, String body) {
-        if (apiUrl.startsWith("http://") && !apiUrl.contains("127.0.0.1") ...) {
-    plugin.getLogger().warning("... prefer HTTPS ...");
-}
+        String apiUrl = plugin.getConfigManager().getBotApiUrl();
         String apiSecret = plugin.getConfigManager().getBotApiSecret();
         int    timeoutMs = plugin.getConfigManager().getBotApiTimeout();
 
-        if (!discordId.matches("\\d{5,32}")) {
+        if (!discordId.matches("\\d{5,32}") {
             plugin.getLogger().warning("Refusing bot DM: invalid discord_id format");
             return false;
         }
 
-        
-        String apiUrl = plugin.getConfigManager().getBotApiUrl();
-        if (apiUrl != null && apiUrl.startsWith("http://")
+        if (apiUrl == null || apiUrl.isBlank()) {
+            plugin.getLogger().warning("[SecureAuth] discord-bot.api-url is empty");
+            return false;
+        }
+        if (apiUrl.startsWith("http://")
                 && !apiUrl.contains("127.0.0.1") && !apiUrl.contains("localhost")) {
             plugin.getLogger().warning(
                     "[SecureAuth] discord-bot.api-url uses plain HTTP to a non-local host — "
