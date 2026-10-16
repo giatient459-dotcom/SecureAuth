@@ -235,7 +235,7 @@ public class TwoFactorManager {
         String apiSecret = plugin.getConfigManager().getBotApiSecret();
         int    timeoutMs = plugin.getConfigManager().getBotApiTimeout();
 
-        if (!discordId.matches("\\d{5,32}") {
+        if (!discordId.matches("\\d{5,32}")) {
             plugin.getLogger().warning("Refusing bot DM: invalid discord_id format");
             return false;
         }
