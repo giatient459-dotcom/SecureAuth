@@ -37,8 +37,11 @@ import java.util.logging.Level;
  */
 public final class PluginHttpServer {
 
+    private static final int MAX_REQUEST_BODY_BYTES = 16 * 1024;
+
     private final SecureAuthPlugin plugin;
     private HttpServer server;
+    private java.util.concurrent.ExecutorService executor;
 
     public PluginHttpServer(SecureAuthPlugin plugin) {
         this.plugin = plugin;
@@ -62,12 +65,20 @@ public final class PluginHttpServer {
             server.createContext("/auth/discord-status", this::handleDiscordStatus);
             server.createContext("/auth/ip-confirm", this::handleIpConfirm);
             server.createContext("/auth/health", this::handleHealth);
-            server.setExecutor(Executors.newFixedThreadPool(2));
+            executor = Executors.newFixedThreadPool(2);
+            server.setExecutor(executor);
             server.start();
             plugin.getLogger().info("[PluginHttpServer] Listening on " + bind + ":" + port);
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "[PluginHttpServer] Failed to start: " + e.getMessage(), e);
-            server = null;
+            if (server != null) {
+                server.stop(0);
+                server = null;
+            }
+            if (executor != null) {
+                executor.shutdownNow();
+                executor = null;
+            }
         }
     }
 
@@ -75,8 +86,12 @@ public final class PluginHttpServer {
         if (server != null) {
             server.stop(0);
             server = null;
-            plugin.getLogger().info("[PluginHttpServer] Stopped.");
         }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
+        plugin.getLogger().info("[PluginHttpServer] Stopped.");
     }
 
     // ── /auth/health ──────────────────────────────────────────────────────────
@@ -96,6 +111,7 @@ public final class PluginHttpServer {
         if (!checkAuth(ex)) return;
 
         String body = readBody(ex);
+        if (body == null) return;
         String username = extractJson(body, "username");
         String uuidStr  = extractJson(body, "uuid");
         String password = extractJson(body, "password");
@@ -141,6 +157,7 @@ public final class PluginHttpServer {
         if (!checkAuth(ex)) return;
 
         String body = readBody(ex);
+        if (body == null) return;
         String discordId = extractJson(body, "discord_id");
         String uuidStr   = extractJson(body, "uuid");
 
@@ -209,6 +226,7 @@ public final class PluginHttpServer {
         if (!checkAuth(ex)) return;
 
         String body = readBody(ex);
+        if (body == null) return;
         String token  = extractJson(body, "token");
         String action = extractJson(body, "action");
         if (token == null || token.isBlank() || action == null || action.isBlank()) {
@@ -299,24 +317,88 @@ public final class PluginHttpServer {
     }
 
     private static String readBody(HttpExchange ex) throws IOException {
+        String length = ex.getRequestHeaders().getFirst("Content-Length");
+        if (length != null) {
+            try {
+                if (Long.parseLong(length) > MAX_REQUEST_BODY_BYTES) {
+                    respond(ex, 413, "{\\"error\\":\\"request_too_large\\"}");
+                    return null;
+                }
+            } catch (NumberFormatException ignored) {
+                // Enforce the byte limit while reading even if Content-Length is malformed.
+            }
+        }
         try (InputStream in = ex.getRequestBody()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            byte[] bytes = in.readNBytes(MAX_REQUEST_BODY_BYTES + 1);
+            if (bytes.length > MAX_REQUEST_BODY_BYTES) {
+                respond(ex, 413, "{\\"error\\":\\"request_too_large\\"}");
+                return null;
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
         }
     }
 
-    /** Minimal JSON string extractor — đủ cho payload nhỏ, không dùng lib ngoài. */
+    /** Extract a top-level JSON string value while honoring JSON escapes. */
     private static String extractJson(String json, String key) {
         if (json == null || json.isBlank()) return null;
-        String pattern = "\"" + key + "\"";
-        int idx = json.indexOf(pattern);
-        if (idx < 0) return null;
-        int colon = json.indexOf(':', idx + pattern.length());
-        if (colon < 0) return null;
-        int start = json.indexOf('"', colon + 1);
-        if (start < 0) return null;
-        int end = json.indexOf('"', start + 1);
-        if (end < 0) return null;
-        return json.substring(start + 1, end);
+        int i = 0;
+        while (i < json.length()) {
+            char c = json.charAt(i);
+            if (c != '"') { i++; continue; }
+            StringBuilder token = new StringBuilder();
+            int afterToken = parseJsonString(json, i, token);
+            if (afterToken < 0) return null;
+            int next = afterToken;
+            while (next < json.length() && Character.isWhitespace(json.charAt(next))) next++;
+            if (next < json.length() && json.charAt(next) == ':') {
+                int valueStart = next + 1;
+                while (valueStart < json.length() && Character.isWhitespace(json.charAt(valueStart))) valueStart++;
+                if (!key.equals(token.toString())) {
+                    i = valueStart;
+                    continue;
+                }
+                if (valueStart >= json.length() || json.charAt(valueStart) != '"') return null;
+                StringBuilder value = new StringBuilder();
+                return parseJsonString(json, valueStart, value) < 0 ? null : value.toString();
+            }
+            i = afterToken;
+        }
+        return null;
+    }
+
+    /** Returns the index after a JSON string, or -1 if it is malformed. */
+    private static int parseJsonString(String json, int quote, StringBuilder out) {
+        if (quote >= json.length() || json.charAt(quote) != '"') return -1;
+        for (int i = quote + 1; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"') return i + 1;
+            if (c < 0x20) return -1;
+            if (c != '\\\\') {
+                out.append(c);
+                continue;
+            }
+            if (++i >= json.length()) return -1;
+            char escaped = json.charAt(i);
+            switch (escaped) {
+                case '"', '\\\\', '/' -> out.append(escaped);
+                case 'b' -> out.append('\\b');
+                case 'f' -> out.append('\\f');
+                case 'n' -> out.append('\\n');
+                case 'r' -> out.append('\\r');
+                case 't' -> out.append('\\t');
+                case 'u' -> {
+                    if (i + 4 >= json.length()) return -1;
+                    try {
+                        out.append((char) Integer.parseInt(json.substring(i + 1, i + 5), 16));
+                    } catch (NumberFormatException e) {
+                        return -1;
+                    }
+                    i += 4;
+                }
+                default -> { return -1; }
+            }
+        }
+        return -1;
     }
 
     private static String escape(String s) {
