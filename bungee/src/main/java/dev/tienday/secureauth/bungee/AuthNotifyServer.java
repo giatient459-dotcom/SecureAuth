@@ -35,7 +35,8 @@ public final class AuthNotifyServer {
             return;
         }
         String secret = plugin.getPluginConfig().getBackendSecret();
-        boolean publicBind = "0.0.0.0".equals(bind) || "*".equals(bind);
+        boolean publicBind = "0.0.0.0".equals(bind) || "*".equals(bind)
+                || "::".equals(bind) || "[::]".equals(bind);
         if (publicBind && (secret.length() < 32 || secret.startsWith("CHANGE_ME"))) {
             plugin.getLogger().severe("[SecureAuthBungee] Refusing public HTTP bind with a weak/default backend-secret. Configure a random secret of at least 32 characters.");
             return;
@@ -158,12 +159,14 @@ public final class AuthNotifyServer {
                 // The bounded read below remains authoritative.
             }
         }
-        byte[] bytes = ex.getRequestBody().readNBytes(MAX_REQUEST_BODY_BYTES + 1);
-        if (bytes.length > MAX_REQUEST_BODY_BYTES) {
-            respond(ex, 413, "request_too_large");
-            return null;
+        try (var input = ex.getRequestBody()) {
+            byte[] bytes = input.readNBytes(MAX_REQUEST_BODY_BYTES + 1);
+            if (bytes.length > MAX_REQUEST_BODY_BYTES) {
+                respond(ex, 413, "request_too_large");
+                return null;
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
         }
-        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private static String extractJsonString(String json, String key) {
