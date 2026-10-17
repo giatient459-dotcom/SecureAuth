@@ -279,43 +279,56 @@ jobs:
             stepTimeout = setTimeout(() => failCurrentStep('timed out after ' + step.timeout + 'ms'), step.timeout);
           }
 
-          const bot = mineflayer.createBot({
-            host: MC_HOST,
-            port: MC_PORT,
-            username: BOT_USERNAME,
-            version: false,
-            hideErrors: false
-          });
+          let bot;
+          let botReady = false;
+          let reconnecting = false;
+          let hasReconnected = false;
 
-          bot.on('spawn', () => {
-            console.log('✅ Bot spawned');
-            setTimeout(() => {
-              botReady = true;
-              sendCurrentStep();
-            }, 3000);
-          });
+          function connectBot() {
+            bot = mineflayer.createBot({
+              host: MC_HOST,
+              port: MC_PORT,
+              username: BOT_USERNAME,
+              version: false,
+              hideErrors: false
+            });
 
-          bot.on('message', (msg) => {
-            const text = msg.toString().trim();
-            if (!text) return;
-            console.log('[CHAT]', text);
+            bot.on('spawn', () => {
+              console.log('Bot spawned');
+              setTimeout(() => {
+                botReady = true;
+                sendCurrentStep();
+              }, 2000);
+            });
 
-            // Bỏ qua message khi bot chưa ready
-            if (!botReady) return;
+            bot.on('message', (msg) => {
+              const text = msg.toString().trim();
+              if (!text) return;
+              console.log('[CHAT]', text);
+              if (!botReady) return;
 
-            const step = steps[stepIndex];
-            if (!step) return;
+              const step = steps[stepIndex];
+              if (!step || !step.wait.test(text)) return;
 
-            if (step.wait.test(text)) {
               const duration = Date.now() - currentStepStart;
               if (stepTimeout) clearTimeout(stepTimeout);
-              console.log(`✅ Step "${step.name}" PASSED (${duration}ms)`);
+              console.log('Step "' + step.name + '" PASSED (' + duration + 'ms)');
               results.push({ name: step.name, passed: true, duration });
-
               stepIndex++;
 
+              // Registration authenticates the player automatically. Reconnect
+              // to start a fresh unauthenticated session before testing bad login.
+              if (step.name === 'register' && !hasReconnected) {
+                hasReconnected = true;
+                reconnecting = true;
+                botReady = false;
+                console.log('Reconnecting to test authentication from a fresh session');
+                setTimeout(() => bot.quit(), 500);
+                return;
+              }
+
               if (stepIndex >= steps.length) {
-                console.log('\n✅ ALL STEPS PASSED');
+                console.log('ALL STEPS PASSED');
                 printResults();
                 clearTimeout(globalTimeout);
                 setTimeout(() => {
@@ -323,27 +336,34 @@ jobs:
                   process.exit(0);
                 }, 1000);
               } else {
-                setTimeout(sendCurrentStep, 1500);
+                setTimeout(sendCurrentStep, 1200);
               }
-            }
-          });
+            });
 
-          bot.on('error', (err) => {
-            console.error('❌ Bot error:', err.message);
-          });
+            bot.on('error', (err) => {
+              console.error('Bot error:', err.message);
+            });
 
-          bot.on('kicked', (reason) => {
-            console.error('❌ Bot kicked:', reason);
-          });
+            bot.on('kicked', (reason) => {
+              console.error('Bot kicked:', reason);
+            });
 
-          bot.on('end', (reason) => {
-            console.log('Bot disconnected:', reason);
-            if (stepIndex < steps.length) {
-              console.log(`⚠️  Only ${stepIndex}/${steps.length} steps passed`);
-              printResults();
-              process.exit(1);
-            }
-          });
+            bot.on('end', (reason) => {
+              console.log('Bot disconnected:', reason || '');
+              if (reconnecting) {
+                reconnecting = false;
+                setTimeout(connectBot, 1000);
+                return;
+              }
+              if (stepIndex < steps.length) {
+                console.error('Bot disconnected before tests completed');
+                printResults();
+                process.exit(1);
+              }
+            });
+          }
+
+          connectBot();;
           BOTEOF
           echo "✅ Bot script created"
 
