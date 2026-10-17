@@ -218,12 +218,6 @@ jobs:
               timeout: 15000
             },
             {
-              name: 'login',
-              chat: `/login ${TEST_PASSWORD}`,
-              wait: /Wrong password|Sai mật khẩu/i,
-              timeout: 10000
-            },
-            {
               name: 'login_wrong_password',
               chat: `/login ${TEST_PASSWORD}-wrong`,
               wait: /Wrong password|Sai mật khẩu/i,
@@ -242,7 +236,6 @@ jobs:
               timeout: 5000
             }
           ];
-
           let stepIndex = 0;
           let botReady = false;
           let currentStepStart = 0;
