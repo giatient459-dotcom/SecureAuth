@@ -381,19 +381,19 @@ public final class PluginHttpServer {
             char c = json.charAt(i);
             if (c == '"') return i + 1;
             if (c < 0x20) return -1;
-            if (c != '\\\\') {
+            if (c != '\\') {
                 out.append(c);
                 continue;
             }
             if (++i >= json.length()) return -1;
             char escaped = json.charAt(i);
             switch (escaped) {
-                case '"', '\\\\', '/' -> out.append(escaped);
-                case 'b' -> out.append('\\b');
-                case 'f' -> out.append('\\f');
-                case 'n' -> out.append('\\n');
-                case 'r' -> out.append('\\r');
-                case 't' -> out.append('\\t');
+                case '"', '\\', '/' -> out.append(escaped);
+                case 'b' -> out.append('\b');
+                case 'f' -> out.append('\f');
+                case 'n' -> out.append('\n');
+                case 'r' -> out.append('\r');
+                case 't' -> out.append('\t');
                 case 'u' -> {
                     if (i + 4 >= json.length()) return -1;
                     try {
