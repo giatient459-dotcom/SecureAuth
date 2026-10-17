@@ -329,7 +329,7 @@ public final class PluginHttpServer {
         if (length != null) {
             try {
                 if (Long.parseLong(length) > MAX_REQUEST_BODY_BYTES) {
-                    respond(ex, 413, "{\\"error\\":\\"request_too_large\\"}");
+                    respond(ex, 413, "{\"error\":\"request_too_large\"}");
                     return null;
                 }
             } catch (NumberFormatException ignored) {
@@ -339,7 +339,7 @@ public final class PluginHttpServer {
         try (InputStream in = ex.getRequestBody()) {
             byte[] bytes = in.readNBytes(MAX_REQUEST_BODY_BYTES + 1);
             if (bytes.length > MAX_REQUEST_BODY_BYTES) {
-                respond(ex, 413, "{\\"error\\":\\"request_too_large\\"}");
+                respond(ex, 413, "{\"error\":\"request_too_large\"}");
                 return null;
             }
             return new String(bytes, StandardCharsets.UTF_8);
@@ -411,7 +411,7 @@ public final class PluginHttpServer {
 
     private static String escape(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        return s.replace("\", "\\\").replace("\"", "\\"");
     }
 
     private static void respond(HttpExchange ex, int code, String body) throws IOException {
