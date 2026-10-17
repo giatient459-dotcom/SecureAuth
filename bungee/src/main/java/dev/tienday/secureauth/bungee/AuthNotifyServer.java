@@ -17,8 +17,11 @@ import java.util.concurrent.Executors;
  */
 public final class AuthNotifyServer {
 
+    private static final int MAX_REQUEST_BODY_BYTES = 16 * 1024;
+
     private final SecureAuthBungee plugin;
     private HttpServer server;
+    private java.util.concurrent.ExecutorService executor;
 
     public AuthNotifyServer(SecureAuthBungee plugin) {
         this.plugin = plugin;
@@ -31,6 +34,13 @@ public final class AuthNotifyServer {
             plugin.getLogger().warning("[SecureAuthBungee] Invalid http-port — notify disabled.");
             return;
         }
+        String secret = plugin.getPluginConfig().getBackendSecret();
+        boolean publicBind = "0.0.0.0".equals(bind) || "*".equals(bind)
+                || "::".equals(bind) || "[::]".equals(bind);
+        if (publicBind && (secret.length() < 32 || secret.startsWith("CHANGE_ME"))) {
+            plugin.getLogger().severe("[SecureAuthBungee] Refusing public HTTP bind with a weak/default backend-secret. Configure a random secret of at least 32 characters.");
+            return;
+        }
         try {
             server = HttpServer.create(new InetSocketAddress(bind, port), 0);
             server.createContext("/auth/notify", this::handleNotify);
@@ -41,10 +51,19 @@ public final class AuthNotifyServer {
                     os.write(ok);
                 }
             });
-            server.setExecutor(Executors.newFixedThreadPool(2));
+            executor = Executors.newFixedThreadPool(2);
+            server.setExecutor(executor);
             server.start();
             plugin.getLogger().info("[SecureAuthBungee] Notify HTTP on " + bind + ":" + port);
         } catch (IOException e) {
+            if (server != null) {
+                server.stop(0);
+                server = null;
+            }
+            if (executor != null) {
+                executor.shutdownNow();
+                executor = null;
+            }
             plugin.getLogger().severe("[SecureAuthBungee] Failed to bind notify HTTP: " + e.getMessage());
         }
     }
@@ -53,6 +72,10 @@ public final class AuthNotifyServer {
         if (server != null) {
             server.stop(0);
             server = null;
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
         }
     }
 
@@ -75,7 +98,8 @@ public final class AuthNotifyServer {
                 respond(ex, 401, "unauthorized");
                 return;
             }
-            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String body = readBody(ex);
+            if (body == null) return;
             String uuidStr = extractJsonString(body, "uuid");
             String err = NotifySigner.validate(
                     secret, uuidStr,
@@ -123,18 +147,80 @@ public final class AuthNotifyServer {
         }
     }
 
+    private static String readBody(HttpExchange ex) throws IOException {
+        String length = ex.getRequestHeaders().getFirst("Content-Length");
+        if (length != null) {
+            try {
+                if (Long.parseLong(length) > MAX_REQUEST_BODY_BYTES) {
+                    respond(ex, 413, "request_too_large");
+                    return null;
+                }
+            } catch (NumberFormatException ignored) {
+                // The bounded read below remains authoritative.
+            }
+        }
+        try (var input = ex.getRequestBody()) {
+            byte[] bytes = input.readNBytes(MAX_REQUEST_BODY_BYTES + 1);
+            if (bytes.length > MAX_REQUEST_BODY_BYTES) {
+                respond(ex, 413, "request_too_large");
+                return null;
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+    }
+
     private static String extractJsonString(String json, String key) {
         if (json == null) return null;
-        String needle = "\"" + key + "\"";
-        int i = json.indexOf(needle);
-        if (i < 0) return null;
-        int colon = json.indexOf(':', i + needle.length());
-        if (colon < 0) return null;
-        int q1 = json.indexOf('"', colon + 1);
-        if (q1 < 0) return null;
-        int q2 = json.indexOf('"', q1 + 1);
-        if (q2 < 0) return null;
-        return json.substring(q1 + 1, q2);
+        int i = 0;
+        while (i < json.length()) {
+            if (json.charAt(i) != '"') { i++; continue; }
+            StringBuilder token = new StringBuilder();
+            int afterToken = parseJsonString(json, i, token);
+            if (afterToken < 0) return null;
+            int next = afterToken;
+            while (next < json.length() && Character.isWhitespace(json.charAt(next))) next++;
+            if (next < json.length() && json.charAt(next) == ':') {
+                int valueStart = next + 1;
+                while (valueStart < json.length() && Character.isWhitespace(json.charAt(valueStart))) valueStart++;
+                if (!key.equals(token.toString())) {
+                    i = valueStart;
+                    continue;
+                }
+                if (valueStart >= json.length() || json.charAt(valueStart) != '"') return null;
+                StringBuilder value = new StringBuilder();
+                return parseJsonString(json, valueStart, value) < 0 ? null : value.toString();
+            }
+            i = afterToken;
+        }
+        return null;
+    }
+
+    private static int parseJsonString(String json, int quote, StringBuilder out) {
+        if (quote >= json.length() || json.charAt(quote) != '"') return -1;
+        for (int i = quote + 1; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"') return i + 1;
+            if (c < 0x20) return -1;
+            if (c != '\\\\') { out.append(c); continue; }
+            if (++i >= json.length()) return -1;
+            char escaped = json.charAt(i);
+            switch (escaped) {
+                case '"', '\\\\', '/' -> out.append(escaped);
+                case 'b' -> out.append('\\b');
+                case 'f' -> out.append('\\f');
+                case 'n' -> out.append('\\n');
+                case 'r' -> out.append('\\r');
+                case 't' -> out.append('\\t');
+                case 'u' -> {
+                    if (i + 4 >= json.length()) return -1;
+                    try { out.append((char) Integer.parseInt(json.substring(i + 1, i + 5), 16)); }
+                    catch (NumberFormatException e) { return -1; }
+                    i += 4;
+                }
+                default -> { return -1; }
+            }
+        }
+        return -1;
     }
 
     private static String extractTs(String json) {

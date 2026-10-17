@@ -21,11 +21,11 @@ public final class PasswordUtil {
     private static final String DISABLED_MARKER = "!disabled";
 
     // Bounds to protect against maliciously crafted hashes.
-    private static final int MAX_MEMORY_KB   = 4 * 1024 * 1024;
-    private static final int MAX_ITERATIONS  = 100;
-    private static final int MAX_PARALLELISM = 64;
+    private static final int MAX_MEMORY_KB   = 128 * 1024;
+    private static final int MAX_ITERATIONS  = 10;
+    private static final int MAX_PARALLELISM = 8;
     private static final int MAX_SALT_BYTES  = 64;
-    private static final int MAX_HASH_BYTES  = 1024;
+    private static final int MAX_HASH_BYTES  = 64;
 
     private PasswordUtil() {}
 
