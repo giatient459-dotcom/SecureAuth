@@ -411,7 +411,7 @@ public final class PluginHttpServer {
 
     private static String escape(String s) {
         if (s == null) return "";
-        return s.replace("\", "\\\").replace("\"", "\\"");
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static void respond(HttpExchange ex, int code, String body) throws IOException {
