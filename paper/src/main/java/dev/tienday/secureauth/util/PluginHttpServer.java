@@ -58,6 +58,14 @@ public final class PluginHttpServer {
         String bind = plugin.getConfig().getString("discord-bot.plugin-http-bind", "127.0.0.1");
         if (bind == null || bind.isBlank()) bind = "127.0.0.1";
         bind = bind.trim();
+        String apiSecret = plugin.getConfigManager().getBotApiSecret();
+        boolean publicBind = "0.0.0.0".equals(bind) || "*".equals(bind)
+                || "::".equals(bind) || "[::]".equals(bind);
+        if (publicBind && (apiSecret == null || apiSecret.length() < 32
+                || apiSecret.startsWith("CHANGE_ME"))) {
+            plugin.getLogger().severe("[PluginHttpServer] Refusing public HTTP bind with a weak/default api-secret. Configure a random secret of at least 32 characters.");
+            return;
+        }
 
         try {
             server = HttpServer.create(new InetSocketAddress(bind, port), 0);
