@@ -15,9 +15,18 @@ on:
         description: 'Test password'
         required: true
         default: 'SecurePass123!'
+  pull_request:
+    branches: [monorepo-fix]
   push:
-    branches: [main, master]
+    branches: [monorepo-fix, main, master]
     tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: secureauth-e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
@@ -62,9 +71,6 @@ jobs:
           level-type=flat
           level-name=world
           motd=SecureAuth E2E
-          enable-rcon=true
-          rcon.port=25575
-          rcon.password=e2e_rcon_pass
           enable-query=false
           disable-chat-reports=true
           allow-flight=true
@@ -214,7 +220,19 @@ jobs:
             {
               name: 'login',
               chat: `/login ${TEST_PASSWORD}`,
-              wait: /Logged in|Đăng nhập|Welcome|Chào mừng/i,
+              wait: /Wrong password|Sai mật khẩu/i,
+              timeout: 10000
+            },
+            {
+              name: 'login_wrong_password',
+              chat: `/login ${TEST_PASSWORD}-wrong`,
+              wait: /Wrong password|Sai mật khẩu/i,
+              timeout: 10000
+            },
+            {
+              name: 'login',
+              chat: `/login ${TEST_PASSWORD}`,
+              wait: /Login successful|Đăng nhập thành công/i,
               timeout: 15000
             },
             {
@@ -228,6 +246,7 @@ jobs:
           let stepIndex = 0;
           let botReady = false;
           let currentStepStart = 0;
+          let stepTimeout = null;
           const results = [];
 
           const globalTimeout = setTimeout(() => {
@@ -246,6 +265,27 @@ jobs:
             console.log('==================================\n');
           }
 
+          function failCurrentStep(reason) {
+            const step = steps[stepIndex];
+            if (stepTimeout) clearTimeout(stepTimeout);
+            console.error('Step ' + (step ? step.name : 'unknown') + ' FAILED: ' + reason);
+            if (step) results.push({ name: step.name, passed: false, duration: Date.now() - currentStepStart });
+            printResults();
+            try { bot.quit(); } catch (_) {}
+            process.exit(1);
+          }
+
+          function sendCurrentStep() {
+            const step = steps[stepIndex];
+            if (!step) return;
+            currentStepStart = Date.now();
+            console.log('\\n[Step ' + (stepIndex + 1) + '/' + steps.length + '] Running: ' + step.name);
+            // Do not log chat commands because they contain test credentials.
+            bot.chat(step.chat);
+            if (stepTimeout) clearTimeout(stepTimeout);
+            stepTimeout = setTimeout(() => failCurrentStep('timed out after ' + step.timeout + 'ms'), step.timeout);
+          }
+
           const bot = mineflayer.createBot({
             host: MC_HOST,
             port: MC_PORT,
@@ -258,9 +298,7 @@ jobs:
             console.log('✅ Bot spawned');
             setTimeout(() => {
               botReady = true;
-              currentStepStart = Date.now();
-              console.log(`\n[Step 1/${steps.length}] Sending: ${steps[0].chat}`);
-              bot.chat(steps[0].chat);
+              sendCurrentStep();
             }, 3000);
           });
 
@@ -277,6 +315,7 @@ jobs:
 
             if (step.wait.test(text)) {
               const duration = Date.now() - currentStepStart;
+              if (stepTimeout) clearTimeout(stepTimeout);
               console.log(`✅ Step "${step.name}" PASSED (${duration}ms)`);
               results.push({ name: step.name, passed: true, duration });
 
@@ -291,10 +330,7 @@ jobs:
                   process.exit(0);
                 }, 1000);
               } else {
-                const next = steps[stepIndex];
-                currentStepStart = Date.now();
-                console.log(`\n[Step ${stepIndex + 1}/${steps.length}] Sending: ${next.chat}`);
-                setTimeout(() => bot.chat(next.chat), 1500);
+                setTimeout(sendCurrentStep, 1500);
               }
             }
           });
@@ -327,10 +363,12 @@ jobs:
           TEST_PASSWORD: ${{ inputs.test_password || 'SecurePass123!' }}
         run: |
           cd test-server
-          timeout 120s node bot-test.js
-          EXIT_CODE=$?
+          echo "::add-mask::$TEST_PASSWORD"
+          set +e
+          timeout 120s node bot-test.js 2>&1 | tee bot-test.log
+          EXIT_CODE=${PIPESTATUS[0]}
           echo "Bot test exit code: $EXIT_CODE"
-          exit $EXIT_CODE
+          exit "$EXIT_CODE"
 
       # ───────────────────────────────────────────────────────
       # 10. Upload logs (always)
@@ -343,20 +381,12 @@ jobs:
           path: test-server/server.log
           if-no-files-found: warn
 
-      - name: Upload SecureAuth database
+      - name: Upload bot test log
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: secureauth-database
-          path: test-server/plugins/SecureAuth/*.db
-          if-no-files-found: warn
-
-      - name: Upload plugin config
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: secureauth-config
-          path: test-server/plugins/SecureAuth/*.yml
+          name: mineflayer-test-log
+          path: test-server/bot-test.log
           if-no-files-found: warn
 
       # ───────────────────────────────────────────────────────
@@ -371,7 +401,6 @@ jobs:
             sleep 2
             kill -9 $(cat server.pid) 2>/dev/null || true
           fi
-          pkill -f paper.jar 2>/dev/null || true
           echo "Server stopped"
 
       # ───────────────────────────────────────────────────────
@@ -379,12 +408,15 @@ jobs:
       # ───────────────────────────────────────────────────────
       - name: Summary
         if: always()
+        env:
+          MC_VERSION: ${{ inputs.mc_version || '1.21.4' }}
+          BOT_USERNAME: ${{ inputs.bot_username || 'TestBot' }}
         run: |
-          echo "## 🎯 E2E Mineflayer Test" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Paper | ${{ inputs.mc_version || '1.21.4' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Bot user | \`${{ inputs.bot_username || 'TestBot' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Java | 21 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Node | 20 |" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 E2E Mineflayer Test" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Paper | $MC_VERSION |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Bot user | $BOT_USERNAME |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Java | 21 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Node | 20 |" >> "$GITHUB_STEP_SUMMARY"
