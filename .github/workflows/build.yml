@@ -2,14 +2,18 @@ name: Build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, monorepo-fix]
   pull_request:
+    branches: [main, master, monorepo-fix]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -17,34 +21,39 @@ jobs:
         with:
           java-version: '21'
           distribution: temurin
-          cache: maven
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.4'
 
       - name: Build all modules
-        run: mvn -B verify --no-transfer-progress
+        run: gradle --no-daemon clean build
 
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 
       - name: Verify JARs
+        env:
+          PROJECT_VERSION: '1.0.3'
         run: bash scripts/verify-jars.sh
-     
+
       - name: Upload Paper JAR
         uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-Paper
-          path: paper/target/SecureAuth-*.jar
+          path: paper/build/libs/SecureAuth-*.jar
           if-no-files-found: error
 
       - name: Upload Velocity JAR
         uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-Velocity
-          path: velocity/target/SecureAuthVelocity-*.jar
+          path: velocity/build/libs/SecureAuthVelocity-*.jar
           if-no-files-found: error
 
       - name: Upload BungeeCord JAR
         uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-BungeeCord
-          path: bungee/target/SecureAuthBungee-*.jar
+          path: bungee/build/libs/SecureAuthBungee-*.jar
           if-no-files-found: error
