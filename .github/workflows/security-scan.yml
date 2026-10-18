@@ -33,7 +33,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-dependency-check-13.0.0-
 
+      - name: Check NVD API key configuration
+        id: nvd-key
+        env:
+          NVD_API_KEY_INPUT: ${{ secrets.NVD_API_KEY }}
+        shell: bash
+        run: |
+          if [[ -z "${NVD_API_KEY_INPUT:-}" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OWASP scan NOT RUN: add the NVD_API_KEY repository secret to enable a complete vulnerability scan."
+            {
+              echo "### OWASP Dependency-Check"
+              echo "Scan **not run** because the repository secret `NVD_API_KEY` is not configured."
+              echo "Add an API key from https://nvd.nist.gov/developers/request-an-api-key, then rerun this workflow."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Scan all Maven modules for known vulnerabilities
+        if: steps.nvd-key.outputs.configured == 'true'
         env:
           NVD_API_KEY_INPUT: ${{ secrets.NVD_API_KEY }}
         shell: bash
@@ -48,12 +67,7 @@ jobs:
             -Dformats=HTML,JSON
             -DfailBuildOnCVSS=7.0
           )
-          if [[ -n "${NVD_API_KEY_INPUT:-}" ]]; then
-            args+=("-DnvdApiKey=$NVD_API_KEY_INPUT")
-          else
-            # Dependency-Check can mistakenly treat an empty environment variable as a configured API key.
-            echo "::warning::NVD_API_KEY is not configured. NVD updates may be slow or rate-limited."
-          fi
+          args+=("-DnvdApiKey=$NVD_API_KEY_INPUT")
           mvn "${args[@]}"
 
       - name: Upload OWASP Dependency-Check reports
