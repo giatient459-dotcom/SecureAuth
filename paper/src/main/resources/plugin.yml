@@ -1,5 +1,5 @@
 name: SecureAuth
-version: '${project.version}'
+version: '${version}'
 main: dev.tienday.secureauth.SecureAuthPlugin
 api-version: '1.21'
 description: Secure login system with Discord 2FA — Paper/Purpur/Spigot backend
