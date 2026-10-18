@@ -92,7 +92,7 @@
                             </filters>
                         </configuration>
                     </execution>
-                </plugins>
+                </executions>
             </plugin>
         </plugins>
     </build>
