@@ -1,7 +1,7 @@
 {
   "id": "secureauth-velocity",
   "name": "SecureAuthVelocity",
-  "version": "${project.version}",
+  "version": "${version}",
   "description": "Velocity companion for SecureAuth — blocks unauthenticated players at proxy",
   "authors": ["TienDay"],
   "dependencies": []
