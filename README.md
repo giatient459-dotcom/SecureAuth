@@ -52,42 +52,27 @@ discord-bot:
 
 ## Build from source
 
+Gradle is the primary build system. Java source is unchanged.
+
 ```bash
-# Entire monorepo
-mvn -B package
+# Build all three modules
+gradle clean build
 
-# Paper only
-mvn -B package -pl paper -am
-
-# Velocity only
-mvn -B package -pl velocity -am
-mvn -B package -pl bungee -am
+# Build one module
+gradle :paper:shadowJar
+gradle :velocity:shadowJar
+gradle :bungee:shadowJar
 ```
 
 Outputs:
 
-- `paper/target/SecureAuth-1.0.3.jar`
-- `velocity/target/SecureAuthVelocity-1.0.3.jar`
-- `bungee/target/SecureAuthBungee-1.0.3.jar`
+- `paper/build/libs/SecureAuth-1.0.3.jar`
+- `velocity/build/libs/SecureAuthVelocity-1.0.3.jar`
+- `bungee/build/libs/SecureAuthBungee-1.0.3.jar`
 
-CI: `.github/workflows/build.yml` + `scripts/verify-jars.sh` (JAR integrity + `api-version` check).
+CI: `.github/workflows/build.yml` + `scripts/verify-jars.sh` (JAR contents and metadata checks).
 
----
-
-## Repository layout
-
-```text
-SecureAuth/
-├── pom.xml                 # parent POM
-├── paper/                  # Paper plugin
-│   ├── pom.xml
-│   └── src/main/...
-├── velocity/               # proxy companion
-├── scripts/verify-jars.sh
-└── .github/workflows/
-```
-
----
+--- 
 
 ## Player commands
 
