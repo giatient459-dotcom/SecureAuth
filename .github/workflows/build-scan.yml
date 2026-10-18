@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           test "$DEVELOCITY_SCAN_TERMS_ACCEPTED" = "true"
           gradle --no-daemon clean build --scan \
-            -Dscan.termsOfServiceUrl=https://gradle.com/help/legal-terms-of-use \
+            -Dscan.termsOfServiceUrl=https://gradle.com/terms-of-service \
             -Dscan.termsOfServiceAgree=yes
 
       - name: Upload Gradle diagnostics
