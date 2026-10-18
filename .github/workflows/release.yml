@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag version (e.g. v1.0.2) — chỉ dùng khi chạy tay; nên push tag thật'
+        description: 'Release tag must match the project version (for example v1.0.3)'
         required: false
         default: ''
 
@@ -17,6 +17,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG_INPUT: \${{ github.event.inputs.tag }}
     steps:
       - uses: actions/checkout@v7
 
@@ -26,47 +28,66 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Build
-        run: mvn -B package --no-transfer-progress
+      - name: Build all modules
+        run: mvn -B clean verify --no-transfer-progress
 
-      - name: Resolve version / paths
+      - name: Resolve version and artifact paths
         id: ver
+        shell: bash
         run: |
           set -euo pipefail
-          PAPER_JAR=$(ls paper/target/SecureAuth-*.jar | grep -v original | head -1)
-          VEL_JAR=$(ls velocity/target/SecureAuthVelocity-*.jar | grep -v original | head -1)
+          PROJECT_VERSION="$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml | head -n1)"
+          test -n "$PROJECT_VERSION"
+
+          PAPER_JAR="paper/target/SecureAuth-$PROJECT_VERSION.jar"
+          VEL_JAR="velocity/target/SecureAuthVelocity-$PROJECT_VERSION.jar"
+          BUNGEE_JAR="bungee/target/SecureAuthBungee-$PROJECT_VERSION.jar"
           test -f "$PAPER_JAR"
           test -f "$VEL_JAR"
-          echo "paper_jar=$PAPER_JAR" >> "$GITHUB_OUTPUT"
-          echo "vel_jar=$VEL_JAR" >> "$GITHUB_OUTPUT"
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
+          test -f "$BUNGEE_JAR"
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$(printf '%s' "$GITHUB_REF" | sed 's#^refs/tags/##')"
           else
-            TAG="${{ github.event.inputs.tag }}"
+            TAG="$RELEASE_TAG_INPUT"
             if [ -z "$TAG" ]; then
-              TAG="v1.0.2-snapshot-${GITHUB_SHA::7}"
+              SHORT_SHA="$(printf '%.7s' "$GITHUB_SHA")"
+              TAG="v$PROJECT_VERSION-snapshot-$SHORT_SHA"
             fi
           fi
+
+          if [[ "$TAG" != "v$PROJECT_VERSION" && "$TAG" != "v$PROJECT_VERSION-snapshot-"* ]]; then
+            echo "::error::Release tag '$TAG' does not match project version $PROJECT_VERSION"
+            exit 1
+          fi
+
+          echo "project_version=$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Paper=$PAPER_JAR Velocity=$VEL_JAR Tag=$TAG"
+          echo "paper_jar=$PAPER_JAR" >> "$GITHUB_OUTPUT"
+          echo "vel_jar=$VEL_JAR" >> "$GITHUB_OUTPUT"
+          echo "bungee_jar=$BUNGEE_JAR" >> "$GITHUB_OUTPUT"
+          echo "Paper=$PAPER_JAR Velocity=$VEL_JAR Bungee=$BUNGEE_JAR Tag=$TAG"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: SecureAuth-release-jars
           path: |
-            ${{ steps.ver.outputs.paper_jar }}
-            ${{ steps.ver.outputs.vel_jar }}
+            \${{ steps.ver.outputs.paper_jar }}
+            \${{ steps.ver.outputs.vel_jar }}
+            \${{ steps.ver.outputs.bungee_jar }}
+          if-no-files-found: error
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: SecureAuth ${{ steps.ver.outputs.tag }}
+          tag_name: \${{ steps.ver.outputs.tag }}
+          name: SecureAuth \${{ steps.ver.outputs.tag }}
           generate_release_notes: true
           files: |
-            ${{ steps.ver.outputs.paper_jar }}
-            ${{ steps.ver.outputs.vel_jar }}
+            \${{ steps.ver.outputs.paper_jar }}
+            \${{ steps.ver.outputs.vel_jar }}
+            \${{ steps.ver.outputs.bungee_jar }}
           fail_on_unmatched_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
