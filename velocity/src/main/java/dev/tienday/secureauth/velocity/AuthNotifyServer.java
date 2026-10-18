@@ -55,7 +55,13 @@ public final class AuthNotifyServer {
             executor = newExecutor;
             plugin.getLogger().info("[SecureAuthVelocity] Notify HTTP on {}:{}", bind, port);
         } catch (IOException | RuntimeException e) {
-            if (newServer != null) newServer.stop(0);
+            if (newServer != null) {
+                try {
+                    newServer.stop(0);
+                } catch (RuntimeException ignored) {
+                    // The server may not have reached the started state.
+                }
+            }
             if (newExecutor != null) newExecutor.shutdownNow();
             plugin.getLogger().error("[SecureAuthVelocity] HTTP bind failed: {}", e.getMessage());
         }
