@@ -1,11 +1,14 @@
-# Maven
+# Gradle
+.gradle/
+**/build/
+gradle-app.setting
+
+# Maven (temporary compatibility during Gradle migration)
 target/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 release.properties
-
-# Maven flatten plugin
 .flattened-pom.xml
 **/.flattened-pom.xml
 
