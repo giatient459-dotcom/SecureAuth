@@ -1,6 +1,7 @@
 import org.owasp.dependencycheck.gradle.extension.DependencyCheckExtension
 
 plugins {
+    id("com.gradleup.shadow") version "8.3.6" apply false
     id("org.owasp.dependencycheck") version "12.1.0"
 }
 
