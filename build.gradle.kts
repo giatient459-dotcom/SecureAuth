@@ -38,6 +38,6 @@ dependencies {
 configure<DependencyCheckExtension> {
     failBuildOnCVSS = 7.0F
     formats = listOf("HTML", "JSON")
-    outputDirectory = layout.buildDirectory.dir("reports/dependency-check").get().asFile
+    outputDirectory = layout.buildDirectory.dir("reports/dependency-check").get().asFile.absolutePath
     nvd.apiKey = System.getenv("NVD_API_KEY") ?: ""
 }
