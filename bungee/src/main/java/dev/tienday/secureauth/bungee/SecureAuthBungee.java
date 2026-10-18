@@ -31,7 +31,7 @@ public final class SecureAuthBungee extends Plugin {
                     sessionStore::clearExpired, 5, 5, TimeUnit.MINUTES);
         }
 
-        getLogger().info("SecureAuthBungee 1.0.2 enabled — notify "
+        getLogger().info("SecureAuthBungee 1.0.3 enabled — notify "
                 + pluginConfig.getHttpBind() + ":" + pluginConfig.getHttpPort());
     }
 
