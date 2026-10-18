@@ -1,0 +1,70 @@
+name: Maven Build Scan (Develocity)
+
+on:
+  push:
+    branches: [main, master, monorepo-fix]
+  pull_request:
+    branches: [main, master, monorepo-fix]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-scan:
+    # Opt-in avoids changing or slowing the normal build until the repository owner
+    # enables publication and explicitly records acceptance of Develocity's terms.
+    if: ${{ vars.DEVELOCITY_SCAN_ENABLED == 'true' && vars.DEVELOCITY_SCAN_TERMS_ACCEPTED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Configure Develocity for this CI run only
+        run: |
+          mkdir -p .mvn
+          cat > .mvn/extensions.xml <<'XML'
+          <extensions xmlns="http://maven.apache.org/EXTENSIONS/1.1.0"
+                      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                      xsi:schemaLocation="http://maven.apache.org/EXTENSIONS/1.1.0 https://maven.apache.org/xsd/core-extensions-1.1.0.xsd">
+            <extension>
+              <groupId>com.gradle</groupId>
+              <artifactId>develocity-maven-extension</artifactId>
+              <version>2.5.0</version>
+            </extension>
+          </extensions>
+          XML
+          cat > .mvn/develocity.xml <<'XML'
+          <develocity>
+            <buildScan>
+              <publish>ON_DEMAND</publish>
+              <backgroundBuildScanUpload>false</backgroundBuildScanUpload>
+            </buildScan>
+          </develocity>
+          XML
+
+      - name: Build and publish Develocity Build Scan
+        env:
+          DEVELOCITY_SCAN_TERMS_ACCEPTED: ${{ vars.DEVELOCITY_SCAN_TERMS_ACCEPTED }}
+        run: |
+          set -euo pipefail
+          test "$DEVELOCITY_SCAN_TERMS_ACCEPTED" = "true"
+          mvn -B verify --no-transfer-progress -Dscan \
+            -Ddevelocity.scan.termsOfUse.url=https://gradle.com/help/legal-terms-of-use \
+            -Ddevelocity.scan.termsOfUse.accept=true
+
+      - name: Upload Maven diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: maven-build-scan-diagnostics
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: warn
