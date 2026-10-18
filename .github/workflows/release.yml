@@ -21,19 +21,15 @@ jobs:
       RELEASE_TAG_INPUT: ${{ github.event.inputs.tag }}
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-java@v6
         with:
           java-version: '21'
           distribution: temurin
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.4'
-
       - name: Build all modules
         run: gradle --no-daemon clean build
-
       - name: Resolve version and artifact paths
         id: ver
         shell: bash
@@ -41,14 +37,12 @@ jobs:
           set -euo pipefail
           PROJECT_VERSION="$(grep -E '^version\s*=' build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')"
           test -n "$PROJECT_VERSION"
-
           PAPER_JAR="paper/build/libs/SecureAuth-$PROJECT_VERSION.jar"
           VEL_JAR="velocity/build/libs/SecureAuthVelocity-$PROJECT_VERSION.jar"
           BUNGEE_JAR="bungee/build/libs/SecureAuthBungee-$PROJECT_VERSION.jar"
           test -f "$PAPER_JAR"
           test -f "$VEL_JAR"
           test -f "$BUNGEE_JAR"
-
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="$(printf '%s' "$GITHUB_REF" | sed 's#^refs/tags/##')"
           else
@@ -58,18 +52,15 @@ jobs:
               TAG="v$PROJECT_VERSION-snapshot-$SHORT_SHA"
             fi
           fi
-
           if [[ "$TAG" != "v$PROJECT_VERSION" && "$TAG" != "v$PROJECT_VERSION-snapshot-"* ]]; then
             echo "::error::Release tag '$TAG' does not match project version $PROJECT_VERSION"
             exit 1
           fi
-
           echo "project_version=$PROJECT_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "paper_jar=$PAPER_JAR" >> "$GITHUB_OUTPUT"
           echo "vel_jar=$VEL_JAR" >> "$GITHUB_OUTPUT"
           echo "bungee_jar=$BUNGEE_JAR" >> "$GITHUB_OUTPUT"
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -79,7 +70,6 @@ jobs:
             ${{ steps.ver.outputs.vel_jar }}
             ${{ steps.ver.outputs.bungee_jar }}
           if-no-files-found: error
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
