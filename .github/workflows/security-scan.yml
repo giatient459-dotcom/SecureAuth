@@ -51,6 +51,8 @@ jobs:
           if [[ -n "${NVD_API_KEY:-}" ]]; then
             args+=("-DnvdApiKey=$NVD_API_KEY")
           else
+            # Dependency-Check can mistakenly treat an empty environment variable as a configured API key.
+            unset NVD_API_KEY
             echo "::warning::NVD_API_KEY is not configured. NVD updates may be slow or rate-limited."
           fi
           mvn "${args[@]}"
