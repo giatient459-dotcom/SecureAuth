@@ -1,0 +1,82 @@
+name: OWASP Dependency-Check
+
+on:
+  push:
+    branches: [main, master, monorepo-fix]
+  pull_request:
+    branches: [main, master, monorepo-fix]
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Cache Dependency-Check vulnerability database
+        uses: actions/cache@v4
+        with:
+          path: .dependency-check-data
+          key: ${{ runner.os }}-dependency-check-13.0.0-${{ hashFiles('pom.xml', '**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-dependency-check-13.0.0-
+
+      - name: Check NVD API key configuration
+        id: nvd-key
+        env:
+          NVD_API_KEY_INPUT: ${{ secrets.NVD_API_KEY }}
+        shell: bash
+        run: |
+          if [[ -z "${NVD_API_KEY_INPUT:-}" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OWASP scan NOT RUN: add the NVD_API_KEY repository secret to enable a complete vulnerability scan."
+            {
+              echo "### OWASP Dependency-Check"
+              echo "Scan **not run** because the repository secret `NVD_API_KEY` is not configured."
+              echo "Add an API key from https://nvd.nist.gov/developers/request-an-api-key, then rerun this workflow."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan all Maven modules for known vulnerabilities
+        if: steps.nvd-key.outputs.configured == 'true'
+        env:
+          NVD_API_KEY_INPUT: ${{ secrets.NVD_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .dependency-check-data
+          args=(
+            -B
+            org.owasp:dependency-check-maven:13.0.0:aggregate
+            --no-transfer-progress
+            -DdataDirectory="$GITHUB_WORKSPACE/.dependency-check-data"
+            -Dformats=HTML,JSON
+            -DfailBuildOnCVSS=7.0
+          )
+          args+=("-DnvdApiKey=$NVD_API_KEY_INPUT")
+          mvn "${args[@]}"
+
+      - name: Upload OWASP Dependency-Check reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: owasp-dependency-check-reports
+          path: |
+            **/dependency-check-report.html
+            **/dependency-check-report.json
+          if-no-files-found: warn
+          retention-days: 14
