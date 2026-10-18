@@ -1,13 +1,13 @@
 # SecureAuth
 
-**Login / register** plugin for Paper (AuthMe-style) with an optional **Velocity** companion module.  
+**Login / register** plugin for Paper (AuthMe-style) with optional **Velocity** and **BungeeCord** companion modules.  
 Supports Discord 2FA, IP sessions, ProtocolLib (soft-depend), bStats, and scheduled SQLite backups.
 
 | Module | Artifact | Requirements |
 |--------|----------|--------------|
-| **Paper** (backend) | `SecureAuth-1.0.2.jar` | **Paper** / **Purpur** 1.21.x (recommended), **Spigot** 1.21+ (best-effort), Java **21** |
-| **Velocity** (proxy) | `SecureAuthVelocity-1.0.2.jar` | Velocity **3.3 / 3.4**, Java 17+ |
-| **BungeeCord** (proxy) | `SecureAuthBungee-1.0.2.jar` | BungeeCord / **Waterfall**, Java 17+ |
+| **Paper** (backend) | `SecureAuth-1.0.3.jar` | **Paper** / **Purpur** 1.21.x (recommended), **Spigot** 1.21+ (best-effort), Java **21** |
+| **Velocity** (proxy) | `SecureAuthVelocity-1.0.3.jar` | Velocity **3.5.x**, Java 17+ |
+| **BungeeCord** (proxy) | `SecureAuthBungee-1.0.3.jar` | BungeeCord / **Waterfall**, Java 17+ |
 
 **API version:** `1.21` · Declared support window: **1.21.x – 26.x** (primarily tested on **1.21.4**)
 
@@ -31,7 +31,7 @@ Supports Discord 2FA, IP sessions, ProtocolLib (soft-depend), bStats, and schedu
 ## Quick install (Paper)
 
 1. Build or download the JAR from **Actions → Artifacts** / Releases  
-2. Put `SecureAuth-1.0.2.jar` in `plugins/`  
+2. Put `SecureAuth-1.0.3.jar` in `plugins/`  
 3. (Recommended) install **ProtocolLib**  
 4. Start the server, then edit `plugins/SecureAuth/config.yml`  
 5. Change **`discord-bot.api-secret`** (do not leave the default)  
@@ -66,9 +66,9 @@ mvn -B package -pl bungee -am
 
 Outputs:
 
-- `paper/target/SecureAuth-1.0.2.jar`
-- `velocity/target/SecureAuthVelocity-1.0.2.jar`
-- `bungee/target/SecureAuthBungee-1.0.2.jar`
+- `paper/target/SecureAuth-1.0.3.jar`
+- `velocity/target/SecureAuthVelocity-1.0.3.jar`
+- `bungee/target/SecureAuthBungee-1.0.3.jar`
 
 CI: `.github/workflows/build.yml` + `scripts/verify-jars.sh` (JAR integrity + `api-version` check).
 
@@ -112,7 +112,7 @@ Other permissions: `secureauth.bypass`, `secureauth.force2fa`, `secureauth.manag
 
 ## Velocity (optional)
 
-1. Install `SecureAuthVelocity-1.0.2.jar` on the proxy  
+1. Install `SecureAuthVelocity-1.0.3.jar` on the proxy  
 2. Paper `config.yml`:
 
 ```yaml
@@ -123,7 +123,7 @@ velocity:
 
 ## BungeeCord / Waterfall (optional)
 
-1. Install `SecureAuthBungee-1.0.2.jar` on the **proxy** (`plugins/`)  
+1. Install `SecureAuthBungee-1.0.3.jar` on the **proxy** (`plugins/`)  
 2. Edit `plugins/SecureAuthBungee/config.properties` — set `backend-secret` and `auth-server`  
 3. Paper `config.yml` (same keys as Velocity):
 

@@ -3,21 +3,17 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
         <groupId>dev.tienday</groupId>
         <artifactId>secureauth-parent</artifactId>
         <version>${revision}</version>
     </parent>
-
     <artifactId>SecureAuthVelocity</artifactId>
     <packaging>jar</packaging>
     <name>SecureAuth Velocity</name>
-
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
     </properties>
-
     <dependencies>
         <dependency>
             <groupId>com.velocitypowered</groupId>
@@ -26,28 +22,27 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.bstats</groupId>
             <artifactId>bstats-velocity</artifactId>
             <version>${bstats.version}</version>
         </dependency>
     </dependencies>
-
     <build>
         <finalName>SecureAuthVelocity-${project.version}</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>true</filtering>
-                <includes>
-                    <include>velocity-plugin.json</include>
-                </includes>
+                <includes><include>velocity-plugin.json</include></includes>
             </resource>
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
-                <excludes>
-                    <exclude>velocity-plugin.json</exclude>
-                </excludes>
+                <excludes><exclude>velocity-plugin.json</exclude></excludes>
             </resource>
         </resources>
         <plugins>
@@ -79,6 +74,10 @@
                                 <relocation>
                                     <pattern>org.bstats</pattern>
                                     <shadedPattern>dev.tienday.secureauth.libs.bstats</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.gson</pattern>
+                                    <shadedPattern>dev.tienday.secureauth.libs.gson</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>
