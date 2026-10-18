@@ -26,22 +26,25 @@ jobs:
         with:
           java-version: '21'
           distribution: temurin
-          cache: maven
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.4'
 
       - name: Build all modules
-        run: mvn -B clean verify --no-transfer-progress
+        run: gradle --no-daemon clean build
 
       - name: Resolve version and artifact paths
         id: ver
         shell: bash
         run: |
           set -euo pipefail
-          PROJECT_VERSION="$(sed -n 's/.*<revision>\([^<]*\)<\/revision>.*/\1/p' pom.xml | head -n1)"
+          PROJECT_VERSION="$(grep -E '^version\s*=' build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')"
           test -n "$PROJECT_VERSION"
 
-          PAPER_JAR="paper/target/SecureAuth-$PROJECT_VERSION.jar"
-          VEL_JAR="velocity/target/SecureAuthVelocity-$PROJECT_VERSION.jar"
-          BUNGEE_JAR="bungee/target/SecureAuthBungee-$PROJECT_VERSION.jar"
+          PAPER_JAR="paper/build/libs/SecureAuth-$PROJECT_VERSION.jar"
+          VEL_JAR="velocity/build/libs/SecureAuthVelocity-$PROJECT_VERSION.jar"
+          BUNGEE_JAR="bungee/build/libs/SecureAuthBungee-$PROJECT_VERSION.jar"
           test -f "$PAPER_JAR"
           test -f "$VEL_JAR"
           test -f "$BUNGEE_JAR"
@@ -66,7 +69,6 @@ jobs:
           echo "paper_jar=$PAPER_JAR" >> "$GITHUB_OUTPUT"
           echo "vel_jar=$VEL_JAR" >> "$GITHUB_OUTPUT"
           echo "bungee_jar=$BUNGEE_JAR" >> "$GITHUB_OUTPUT"
-          echo "Paper=$PAPER_JAR Velocity=$VEL_JAR Bungee=$BUNGEE_JAR Tag=$TAG"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
