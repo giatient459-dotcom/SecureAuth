@@ -6,7 +6,7 @@
     <parent>
         <groupId>dev.tienday</groupId>
         <artifactId>secureauth-parent</artifactId>
-        <version>\${revision}</version>
+        <version>${revision}</version>
     </parent>
     <artifactId>SecureAuthVelocity</artifactId>
     <packaging>jar</packaging>
@@ -18,7 +18,7 @@
         <dependency>
             <groupId>com.velocitypowered</groupId>
             <artifactId>velocity-api</artifactId>
-            <version>\${velocity.version}</version>
+            <version>${velocity.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -28,11 +28,11 @@
         <dependency>
             <groupId>org.bstats</groupId>
             <artifactId>bstats-velocity</artifactId>
-            <version>\${bstats.version}</version>
+            <version>${bstats.version}</version>
         </dependency>
     </dependencies>
     <build>
-        <finalName>SecureAuthVelocity-\${project.version}</finalName>
+        <finalName>SecureAuthVelocity-${project.version}</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
@@ -56,7 +56,7 @@
                         <path>
                             <groupId>com.velocitypowered</groupId>
                             <artifactId>velocity-api</artifactId>
-                            <version>\${velocity.version}</version>
+                            <version>${velocity.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
