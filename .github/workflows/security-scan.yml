@@ -35,7 +35,7 @@ jobs:
 
       - name: Scan all Maven modules for known vulnerabilities
         env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          NVD_API_KEY_INPUT: ${{ secrets.NVD_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,11 +48,10 @@ jobs:
             -Dformats=HTML,JSON
             -DfailBuildOnCVSS=7.0
           )
-          if [[ -n "${NVD_API_KEY:-}" ]]; then
-            args+=("-DnvdApiKey=$NVD_API_KEY")
+          if [[ -n "${NVD_API_KEY_INPUT:-}" ]]; then
+            args+=("-DnvdApiKey=$NVD_API_KEY_INPUT")
           else
             # Dependency-Check can mistakenly treat an empty environment variable as a configured API key.
-            unset NVD_API_KEY
             echo "::warning::NVD_API_KEY is not configured. NVD updates may be slow or rate-limited."
           fi
           mvn "${args[@]}"
